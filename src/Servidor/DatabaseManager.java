@@ -1,4 +1,4 @@
-package br.puc.campinas.co2nect;
+package src.Servidor;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -76,7 +76,7 @@ public class DatabaseManager {
      * O dispositivo é cadastrado/atualizado antes da leitura para respeitar a FK
      * sensor_reading.device_id -> sensor_device.device_id do schema atual.
      */
-    public long saveRead(SensorData data) throws SQLException {
+    public long saveRead(Leitura data) throws SQLException {
         ValidatedReading reading = validateAndNormalize(data);
         String upsertDeviceSql = """
                 INSERT INTO sensor_device (device_id, display_name, is_online, last_seen_at, last_status_at)
@@ -130,9 +130,7 @@ public class DatabaseManager {
     }
 
     /** Compatibilidade com o caminho WebSocket já existente no projeto. */
-    public void insertReading(String deviceId, int co2, double temperature,
-                              double humidity, Timestamp measuredAt) throws SQLException {
-        SensorData data = new SensorData();
+    public void insertReading(Leitura data) throws SQLException {
         data.deviceId = deviceId;
         data.co2 = co2;
         data.temperature = temperature;
@@ -168,11 +166,8 @@ public class DatabaseManager {
         }
     }
 
-    /**
-     * Lista as leituras de um dispositivo no intervalo solicitado, mais recentes
-     * primeiro. O segundo critério (id DESC) desempata leituras com mesmo horário.
-     */
-    public List<SensorReading> listReadings(String deviceId, Instant start,
+    /*
+        public List<SensorReading> listReadings(String deviceId, Instant start,
                                             Instant end, int limit) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         validateInterval(start, end);
@@ -207,7 +202,7 @@ public class DatabaseManager {
         return readings;
     }
 
-    /** Histórico resumido para compatibilidade: últimas 50 leituras do dispositivo. */
+    // Histórico resumido para compatibilidade: últimas 50 leituras do dispositivo.
     public List<SensorReading> getHistory(String deviceId) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         String sql = """
@@ -230,9 +225,17 @@ public class DatabaseManager {
         }
         return readings;
     }
+    
+    */
+    /**
+     * Lista as leituras de um dispositivo no intervalo solicitado, mais recentes
+     * primeiro. O segundo critério (id DESC) desempata leituras com mesmo horário.
+     */
+
 
     /** Calcula as médias diretamente no PostgreSQL para o intervalo solicitado. */
-    public ReadingAverage getAverage(String deviceId, Instant start, Instant end) throws SQLException {
+    /*
+        public ReadingAverage getAverage(String deviceId, Instant start, Instant end) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         validateInterval(start, end);
 
@@ -277,6 +280,7 @@ public class DatabaseManager {
                 resultSet.getObject("measured_at", OffsetDateTime.class),
                 resultSet.getObject("received_at", OffsetDateTime.class));
     }
+    */
 
     private static void rollbackQuietly(Connection connection) {
         try {
@@ -286,7 +290,7 @@ public class DatabaseManager {
         }
     }
 
-    private static ValidatedReading validateAndNormalize(SensorData data) {
+    private static ValidatedReading validateAndNormalize(Leitura data) {
         if (data == null) {
             throw new IllegalArgumentException("A leitura não pode ser nula.");
         }
