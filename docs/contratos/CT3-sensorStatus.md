@@ -1,22 +1,14 @@
-# CT3: sensorStatus
+# CT3 — sensorStatus
 
-| Linha | Valor |
-| :--- | :--- |
+| Campo | Definição |
+|---|---|
 | Fronteira | MQTT |
-| Quem chama | Broker (envia automaticamente via Last Will and Testament quando o ESP32 cai, ou o próprio ESP32 quando conecta) |
-| Quem responde | Backend Java (assina o tópico para monitorar a conexão) |
+| Publicador | ESP32-S3 ou broker (LWT) |
+| Consumidor | Backend 1 Java |
 | Atende | E1, E5 |
-| Como chamar | Tópico MQTT `co2nect/{deviceId}/status` |
+| Tópico | `co2nect/{deviceId}/status` |
+| Filtro do assinante | `co2nect/+/status` |
+| Payload | `1` = online; `0` = offline |
+| Retained | Sim |
 
-## Entrada
-| Campo | Tipo | Obrigatório | Exemplo |
-| :--- | :--- | :--- | :--- |
-| status | 0 ou 1 | sim | 0 |
-
-## Saída
-Não tem.
-
-## Erros
-| Quando | O que volta |
-| :--- | :--- |
-| O payload não for reconhecido | O Java ignora a mensagem e mantém o último estado conhecido do sensor |
+Na conexão MQTT, o ESP32 publica `1`. A sessão configura Last Will and Testament `0` (QoS 1, retained), emitido pelo broker após detectar desconexão inesperada. O status indica conectividade MQTT, **não** saúde ou validade da leitura do SCD30. A desconexão graciosa não emite automaticamente LWT; para desligamento controlado, seria necessário publicar `0` antes de desconectar.

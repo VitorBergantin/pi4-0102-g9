@@ -1,27 +1,24 @@
-# CT1: publishReading
+# CT1 — publishReading
 
-| Linha | Valor |
-| :--- | :--- |
+| Campo | Definição |
+|---|---|
 | Fronteira | MQTT |
-| Quem chama | ESP32-S3 (publica) e Broker (repassa a mensagem) |
-| Quem responde | Broker (recebe) e Backend Java (assina o tópico e lê) |
+| Publicador | ESP32-S3 (Backend 2) |
+| Consumidor | Java (Backend 1) |
 | Atende | E1 |
-| Como chamar | Tópico MQTT `/sensor/data` |
+| Tópico | `co2nect/{deviceId}/telemetry` |
+| Filtro do assinante | `co2nect/+/telemetry` |
+| QoS de publicação | 0 (PubSubClient) |
+| Retained | Não |
 
-## Entrada
+## Payload
+
 | Campo | Tipo | Obrigatório | Exemplo |
-| :--- | :--- | :--- | :--- |
-| deviceId | texto | sim | ESP32-SALA-01 |
-| co2 | inteiro | sim | 850 |
-| temperature | decimal | sim | 24.5 |
-| humidity | decimal | sim | 45.2 |
-| measuredAt | data e hora | sim | 2026-10-13T19:20:00 |
+|---|---|---|---|
+| `deviceId` | string | Sim | `ESP32-SALA-01` |
+| `co2` | inteiro | Sim | `850` |
+| `temperature` | decimal | Sim | `24.5` |
+| `humidity` | decimal | Sim | `45.2` |
+| `measuredAt` | string ISO-8601 UTC | Sim | `2026-11-14T17:00:00Z` |
 
-## Saída
-Não tem.
-
-## Erros
-| Quando | O que volta |
-| :--- | :--- |
-| O formato do JSON está quebrado ou ilegível | O backend Java descarta a mensagem e registra a falha no log |
-| O sensor envia valores negativos ou nulos | O backend Java recusa a leitura e não grava no banco (Erro INVALID_READING) |
+O timestamp é gerado na publicação com relógio SNTP sincronizado. Valores inválidos ou ausência de dados recentes impedem o envio. Mensagens inválidas devem ser rejeitadas pelo Backend 1. Não há resposta MQTT de aplicação.
