@@ -1,5 +1,7 @@
 package src.Servidor;
 
+import java.util.ArrayList;
+
 public class Servidor {
     public static String PORTA_PADRAO = "3000";
 
@@ -14,11 +16,13 @@ public class Servidor {
         if (args.length == 1)
             porta = args[0];
 
+        DatabaseManager databaseManager = new DatabaseManager();
+
         ArrayList<Parceiro> usuarios = new ArrayList<Parceiro>();
 
         AceitadorDeConexao aceitador = null;
         try {
-            aceitador = new AceitadorDeConexao(porta, usuarios);
+            aceitador = new AceitadorDeConexao(porta, usuarios, databaseManager);
         aceitador.start();
             System.out.println("Servidor executado na porta - Servidor.java:23" + porta + "...");
         } catch (Exception e) {

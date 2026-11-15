@@ -1,7 +1,4 @@
-package src.Cliente;
-
-//Usando Serializable para que seja possível mandar a classe no ObjectOutputStream
-import java.io.Serializable;
+package src.Comum;
 
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
@@ -10,15 +7,15 @@ import com.google.gson.JsonParser;
 
 import java.nio.charset.StandardCharsets;
 
-public class Leitura implements Serializable {
+public class Leitura extends Comunicado {
     private String deviceId;
-    private double co2;
+    private int co2;
     private double temperature;
     private double humidity;
     private String measuredAt;
 
     protected void validaDouble(double num) {
-        if (num < 0)
+        if (num < 0 || !Double.isFinite(num))
             throw new IllegalArgumentException("Valor de leitura inválido");
         return;
     }
@@ -29,7 +26,7 @@ public class Leitura implements Serializable {
         return;
     }
 
-    Leitura(String devId, double co2, double temp, double hum, String measure) {
+    public Leitura(String devId, int co2, double temp, double hum, String measure) {
         setDeviceId(devId);
         setCo2(co2);
         setTemperature(temp);
@@ -42,18 +39,16 @@ public class Leitura implements Serializable {
         this.deviceId = deviceId;
     }
 
-    public void setCo2(double co2) {
-        validaDouble(co2);
-
+    public void setCo2(int co2) {
         // co2 é medido em ppm (partes por milhão)
-        if (co2 > 1000000)
-            throw new IllegalArgumentException("Valor de co2 acima dos limites");
+        if (co2 > 1000000 || co2 < 0)
+            throw new IllegalArgumentException("Valor de co2 fora dos limites");
 
         this.co2 = co2;
     }
 
     public void setTemperature(double temperature) { // temperatura pode ser negativa
-        if (temperature < -273 || temperature > 100)
+        if (temperature < -273 || temperature > 100 || !Double.isFinite(temperature))
             throw new IllegalArgumentException("Valores extremos de temperatura detectados");
         this.temperature = temperature;
     }
@@ -75,7 +70,7 @@ public class Leitura implements Serializable {
         return deviceId;
     }
 
-    public double getCo2() {
+    public int getCo2() {
         return co2;
     }
 
@@ -98,7 +93,7 @@ public class Leitura implements Serializable {
         JsonObject leitura = JsonParser.parseString(json).getAsJsonObject();
 
         String devId = leitura.get("deviceId").getAsString();
-        double co2 = leitura.get("co2").getAsDouble();
+        int co2 = leitura.get("co2").getAsInt();
         double temp = leitura.get("temperature").getAsDouble();
         double umidade = leitura.get("humidity").getAsDouble();
         String measure = leitura.get("measuredAt").getAsString();

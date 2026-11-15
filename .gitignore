@@ -48,9 +48,15 @@ buildNumber.properties
 # Mac
 .DS_Store
 
+# Environment Variables
+.env
+
+# Certificates
+certs/*.crt
+certs/*.pem
+certs/*.key
 # Docker / Broker local data and logs
 **/mosquitto/data/
 **/mosquitto/log/
 data/
 logs/
-.env

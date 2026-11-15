@@ -1,4 +1,4 @@
-package br.puc.campinas.co2nect;
+package src.Servidor;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -14,6 +14,10 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+
+import src.Configuracao.Configuracao;
+import src.Comum.Comunicado;
+import src.Comum.Leitura;
 
 /**
  * Camada de persistência PostgreSQL do CO2NNECT.
@@ -76,7 +80,7 @@ public class DatabaseManager {
      * O dispositivo é cadastrado/atualizado antes da leitura para respeitar a FK
      * sensor_reading.device_id -> sensor_device.device_id do schema atual.
      */
-    public long saveRead(SensorData data) throws SQLException {
+    public long saveRead(Leitura data) throws SQLException {
         ValidatedReading reading = validateAndNormalize(data);
         String upsertDeviceSql = """
                 INSERT INTO sensor_device (device_id, display_name, is_online, last_seen_at, last_status_at)
@@ -130,14 +134,7 @@ public class DatabaseManager {
     }
 
     /** Compatibilidade com o caminho WebSocket já existente no projeto. */
-    public void insertReading(String deviceId, int co2, double temperature,
-                              double humidity, Timestamp measuredAt) throws SQLException {
-        SensorData data = new SensorData();
-        data.deviceId = deviceId;
-        data.co2 = co2;
-        data.temperature = temperature;
-        data.humidity = humidity;
-        data.measuredAt = measuredAt == null ? null : measuredAt.toInstant().toString();
+    public void insertReading(Leitura data) throws SQLException {
         saveRead(data);
     }
 
@@ -168,11 +165,8 @@ public class DatabaseManager {
         }
     }
 
-    /**
-     * Lista as leituras de um dispositivo no intervalo solicitado, mais recentes
-     * primeiro. O segundo critério (id DESC) desempata leituras com mesmo horário.
-     */
-    public List<SensorReading> listReadings(String deviceId, Instant start,
+    /*
+        public List<SensorReading> listReadings(String deviceId, Instant start,
                                             Instant end, int limit) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         validateInterval(start, end);
@@ -207,7 +201,7 @@ public class DatabaseManager {
         return readings;
     }
 
-    /** Histórico resumido para compatibilidade: últimas 50 leituras do dispositivo. */
+    // Histórico resumido para compatibilidade: últimas 50 leituras do dispositivo.
     public List<SensorReading> getHistory(String deviceId) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         String sql = """
@@ -230,9 +224,17 @@ public class DatabaseManager {
         }
         return readings;
     }
+    
+    */
+    /**
+     * Lista as leituras de um dispositivo no intervalo solicitado, mais recentes
+     * primeiro. O segundo critério (id DESC) desempata leituras com mesmo horário.
+     */
+
 
     /** Calcula as médias diretamente no PostgreSQL para o intervalo solicitado. */
-    public ReadingAverage getAverage(String deviceId, Instant start, Instant end) throws SQLException {
+    /*
+        public ReadingAverage getAverage(String deviceId, Instant start, Instant end) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         validateInterval(start, end);
 
@@ -277,6 +279,7 @@ public class DatabaseManager {
                 resultSet.getObject("measured_at", OffsetDateTime.class),
                 resultSet.getObject("received_at", OffsetDateTime.class));
     }
+    */
 
     private static void rollbackQuietly(Connection connection) {
         try {
@@ -286,29 +289,26 @@ public class DatabaseManager {
         }
     }
 
-    private static ValidatedReading validateAndNormalize(SensorData data) {
+    private static ValidatedReading validateAndNormalize(Leitura data) {
         if (data == null) {
             throw new IllegalArgumentException("A leitura não pode ser nula.");
         }
-        String deviceId = validateDeviceId(data.deviceId);
+        String deviceId = validateDeviceId(data.getDeviceId());
 
-        if (data.co2 == null || data.co2 < 0) {
+        if (data.getCo2() < 0) {
             throw new IllegalArgumentException("CO2 deve ser um inteiro maior ou igual a zero.");
         }
-        if (data.temperature == null || !Double.isFinite(data.temperature)
-                || data.temperature < -40.0 || data.temperature > 100.0) {
+        if (!Double.isFinite(data.getTemperature()) || data.getTemperature() < -40.0 || data.getTemperature() > 100.0) {
             throw new IllegalArgumentException("Temperatura deve estar entre -40 e 100 °C.");
         }
-        if (data.humidity == null || !Double.isFinite(data.humidity)
-                || data.humidity < 0.0 || data.humidity > 100.0) {
+        if (!Double.isFinite(data.getHumidity()) || data.getHumidity() < 0.0 || data.getHumidity() > 100.0) {
             throw new IllegalArgumentException("Umidade deve estar entre 0 e 100%.");
         }
-        if (data.measuredAt == null || data.measuredAt.isBlank()) {
+        if (data.getMeasuredAt() == null || data.getMeasuredAt().isBlank()) {
             throw new IllegalArgumentException("measuredAt é obrigatório e deve estar no formato ISO-8601.");
         }
 
-        return new ValidatedReading(deviceId, data.co2, data.temperature, data.humidity,
-                parseMeasuredAt(data.measuredAt));
+        return new ValidatedReading(deviceId, data.getCo2(), data.getTemperature(), data.getHumidity(), parseMeasuredAt(data.getMeasuredAt()));
     }
 
     private static String validateDeviceId(String deviceId) {

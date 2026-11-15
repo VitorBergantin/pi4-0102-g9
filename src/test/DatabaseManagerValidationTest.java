@@ -1,4 +1,4 @@
-package br.puc.campinas.co2nect;
+package src.test;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -23,8 +23,8 @@ public class DatabaseManagerValidationTest {
         db = new DatabaseManager(DEAD_URL, "u", "p");
     }
 
-    private static SensorData valid() {
-        SensorData d = new SensorData();
+    private static Leitura valid() {
+        Leitura d = new Leitura();
         d.deviceId = "ESP32-SALA-01";
         d.co2 = 850;
         d.temperature = 24.5;
@@ -33,7 +33,7 @@ public class DatabaseManagerValidationTest {
         return d;
     }
 
-    private void assertRejected(String motivo, SensorData data) throws SQLException {
+    private void assertRejected(String motivo, Leitura data) throws SQLException {
         try {
             db.saveRead(data);
             fail("Deveria rejeitar: " + motivo);
@@ -62,20 +62,20 @@ public class DatabaseManagerValidationTest {
 
     @Test
     public void saveRead_rejeitaDeviceIdInvalido() throws Exception {
-        SensorData d = valid(); d.deviceId = null;  assertRejected("deviceId nulo", d);
+        Leitura d = valid(); d.deviceId = null;  assertRejected("deviceId nulo", d);
         d = valid(); d.deviceId = "   ";            assertRejected("deviceId em branco", d);
         d = valid(); d.deviceId = "X".repeat(101);  assertRejected("deviceId > 100 caracteres", d);
     }
 
     @Test
     public void saveRead_rejeitaCo2Invalido() throws Exception {
-        SensorData d = valid(); d.co2 = null; assertRejected("co2 nulo", d);
+        Leitura d = valid(); d.co2 = null; assertRejected("co2 nulo", d);
         d = valid(); d.co2 = -1;              assertRejected("co2 negativo", d);
     }
 
     @Test
     public void saveRead_rejeitaTemperaturaInvalida() throws Exception {
-        SensorData d = valid(); d.temperature = null;                    assertRejected("temperatura nula", d);
+        Leitura d = valid(); d.temperature = null;                    assertRejected("temperatura nula", d);
         d = valid(); d.temperature = Double.NaN;                         assertRejected("temperatura NaN", d);
         d = valid(); d.temperature = Double.POSITIVE_INFINITY;           assertRejected("temperatura infinita", d);
         d = valid(); d.temperature = -40.1;                              assertRejected("abaixo de -40", d);
@@ -84,7 +84,7 @@ public class DatabaseManagerValidationTest {
 
     @Test
     public void saveRead_rejeitaUmidadeInvalida() throws Exception {
-        SensorData d = valid(); d.humidity = null;   assertRejected("umidade nula", d);
+        Leitura d = valid(); d.humidity = null;   assertRejected("umidade nula", d);
         d = valid(); d.humidity = -0.1;              assertRejected("umidade < 0", d);
         d = valid(); d.humidity = 100.1;             assertRejected("umidade > 100", d);
         d = valid(); d.humidity = Double.NaN;        assertRejected("umidade NaN", d);
@@ -92,7 +92,7 @@ public class DatabaseManagerValidationTest {
 
     @Test
     public void saveRead_rejeitaDataInvalida() throws Exception {
-        SensorData d = valid(); d.measuredAt = null;          assertRejected("data nula", d);
+        Leitura d = valid(); d.measuredAt = null;          assertRejected("data nula", d);
         d = valid(); d.measuredAt = "  ";                      assertRejected("data em branco", d);
         d = valid(); d.measuredAt = "ontem à tarde";           assertRejected("data fora do ISO 8601", d);
         d = valid(); d.measuredAt = "13/10/2026 19:20";        assertRejected("data no formato brasileiro", d);
@@ -100,7 +100,7 @@ public class DatabaseManagerValidationTest {
 
     @Test
     public void saveRead_aceitaTemperaturaNegativaDentroDaFaixaDoSensor() throws Exception {
-        SensorData d = valid(); d.temperature = -5.0;
+        Leitura d = valid(); d.temperature = -5.0;
         try {
             db.saveRead(d);
             fail("Sem banco, deveria falhar com SQLException (e não com IllegalArgumentException)");

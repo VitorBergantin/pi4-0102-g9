@@ -1,5 +1,5 @@
 package br.puc.campinas.co2nect;
-
+/*
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
@@ -16,7 +16,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-/** Recebe telemetria e status do ESP32 pelo broker Mosquitto. */
+// Recebe telemetria e status do ESP32 pelo broker Mosquitto.
 public final class MqttSensorSubscriber implements AutoCloseable {
     private final DatabaseManager database;
     private final String readingsTopicFilter;
@@ -97,7 +97,7 @@ public final class MqttSensorSubscriber implements AutoCloseable {
     private void handleMessage(String topic, String payload) {
         try {
             if (matchesTopic(readingsTopicFilter, topic)) {
-                SensorData data = gson.fromJson(payload, SensorData.class);
+                Leitura data = gson.fromJson(payload, Leitura.class);
                 if (data == null) {
                     throw new IllegalArgumentException("Payload JSON vazio ou inválido.");
                 }
@@ -145,7 +145,7 @@ public final class MqttSensorSubscriber implements AutoCloseable {
         return segments[1];
     }
 
-    /** Implementa os curingas MQTT '+' e '#', suficientes para os filtros configurados. */
+    // Implementa os curingas MQTT '+' e '#', suficientes para os filtros configurados.
     private static boolean matchesTopic(String filter, String topic) {
         String[] filterParts = filter.split("/", -1);
         String[] topicParts = topic.split("/", -1);
@@ -203,3 +203,4 @@ public final class MqttSensorSubscriber implements AutoCloseable {
         return value.trim();
     }
 }
+    */

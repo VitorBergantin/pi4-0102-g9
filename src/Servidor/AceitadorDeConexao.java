@@ -6,8 +6,9 @@ import java.util.*;
 public class AceitadorDeConexao extends Thread {
     private ServerSocket pedido;
     private ArrayList<Parceiro> usuarios;
+    private DatabaseManager databaseManager;
 
-    public AceitadorDeConexao(String porta, ArrayList<Parceiro> users) throws Exception {
+    public AceitadorDeConexao(String porta, ArrayList<Parceiro> users, DatabaseManager manager) throws Exception {
         if (porta == null)
             throw new Exception("Porta ausente");
 
@@ -21,6 +22,8 @@ public class AceitadorDeConexao extends Thread {
             throw new Exception("Usuarios ausentes");
 
         this.usuarios = users;
+
+        this.databaseManager = manager;
     }
     @Override
     public void run() {
@@ -36,17 +39,14 @@ public class AceitadorDeConexao extends Thread {
             SupervisoraDeConexao supervisoraDeConexao = null;
 
             try {
-                supervisoraDeConexao = new SupervisoraDeConexao(conexao, this.usuarios);
-            } catch (Exception e) {
-            }
+                supervisoraDeConexao = new SupervisoraDeConexao(conexao, this.usuarios, this.databaseManager);
+                //inicio da thread da supervisora para o cliente
+                supervisoraDeConexao.start();
+            } catch (Exception e) {}
             try {
                 conexao.close();
             } catch (Exception erroClose) {}
             continue;
-            }
-
-//inicio da thread da supervisora para o cliente
-            supervisoraDeConexao.start();
         }
     }
 }
