@@ -1,4 +1,4 @@
-package br.puc.campinas.co2nect.mqtt;
+package src.Cliente;
 
 import java.io.File;
 import java.io.FileInputStream;

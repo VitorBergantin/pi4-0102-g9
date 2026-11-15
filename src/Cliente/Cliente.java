@@ -3,6 +3,10 @@ package src.Cliente;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import src.Configuracao.Configuracao;
+import src.Comum.Comunicado;
+import src.Comum.Leitura;
+
 import java.net.*;
 import java.io.*;
 
@@ -72,18 +76,30 @@ public class Cliente {
 
         BlockingQueue<Leitura> fila = new LinkedBlockingQueue<>();
         try {
-            LeitorMqtt leitor = new LeitorMqtt();
+            Configuracao.carregarEnv();
+
+            String broker = Configuracao.obter("MQTT_BROKER_URL", "tcp://localhost:1883");
+            String usuario = Configuracao.obter("MQTT_USER", null);
+            String senha = Configuracao.obter("MQTT_PASSWORD", null);
+            String certificado = Configuracao.obter("MQTT_CA_CERT", null);
+
+            // TODO: Conferir se o caminho do mqtt_ca_cert está correto como: certs/emqxsl-ca.crt
+            LeitorMqtt leitor = new LeitorMqtt(fila, broker, usuario, senha, certificado);
             leitor.iniciar();
         } catch (Exception e) {
             System.out.println("Erro com o Leitor Mqtt");
         }
 
         do {
-            //Meu LeitorMqtt lança as Leituras no BlockingQueue
+            try {
+
+            } catch (InterruptedException e) {
+                System.out.println("Conexão com o cliente interrompida");
+            }
+            // LeitorMqtt lança as Leituras no BlockingQueue
             Leitura leitura = fila.take();
 
-            output.writeObject(leitura);
-            output.flush();
+            servidor.receba(leitura);
 
         } while (true);
     }

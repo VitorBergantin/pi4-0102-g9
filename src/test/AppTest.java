@@ -1,4 +1,4 @@
-package br.puc.campinas.co2nect;
+package src.test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;

@@ -4,12 +4,16 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
+import src.Comum.Comunicado;
+import src.Comum.Leitura;
+
 public class SupervisoraDeConexao extends Thread {
     private Socket conexao;
     private ArrayList<Parceiro> usuarios;
     private Parceiro usuario;
+    private DatabaseManager databaseManager;
 
-    public SupervisoraDeConexao(Socket conexao, ArrayList<Parceiro> usuarios) throws Exception {
+    public SupervisoraDeConexao(Socket conexao, ArrayList<Parceiro> usuarios, DatabaseManager manager) throws Exception {
         if (conexao == null)
             throw new Exception("Conexão ausente");
         if (usuarios == null)
@@ -17,6 +21,7 @@ public class SupervisoraDeConexao extends Thread {
 
         this.conexao = conexao;
         this.usuarios = usuarios;
+        this.databaseManager = manager;
     }
 
     @Override
@@ -56,7 +61,10 @@ public class SupervisoraDeConexao extends Thread {
                 if (comunicado == null)
                     return;
 
-                // Processar comunicados / leituras recebidas do cliente aqui...
+                // Adiciono a leitura ao banco
+                if (comunicado instanceof Leitura leitura) {
+                    this.databaseManager.saveRead(leitura);
+                }
             }
         } catch (Exception erro) {
             // Cliente desconectou ou ocorreu erro de leitura

@@ -14,6 +14,8 @@ public class Servidor {
         if (args.length == 1)
             porta = args[0];
 
+        DatabaseManager databaseManager = new DatabaseManager();
+
         ArrayList<Parceiro> usuarios = new ArrayList<Parceiro>();
 
         AceitadorDeConexao aceitador = null;

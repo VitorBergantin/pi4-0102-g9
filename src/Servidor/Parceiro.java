@@ -1,9 +1,11 @@
-package src.Cliente;
+package src.Servidor;
 
 import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+
+import src.Comum.Comunicado;
 
 public class Parceiro {
     // essenciais da conexão
@@ -32,7 +34,7 @@ public class Parceiro {
 
     // a forma como vai operar pode ser mudada, portanto vou mexer depois nisso de
     // Comunicado ser usado
-    public void receba(Comunicado x) {
+    public void receba(Comunicado x) throws Exception {
         try {
             this.transmissor.writeObject(x);
             this.transmissor.flush();

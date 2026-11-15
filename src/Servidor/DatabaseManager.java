@@ -15,6 +15,10 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
+import src.Configuracao.Configuracao;
+import src.Comum.Comunicado;
+import src.Comum.Leitura;
+
 /**
  * Camada de persistência PostgreSQL do CO2NNECT.
  *
@@ -131,11 +135,6 @@ public class DatabaseManager {
 
     /** Compatibilidade com o caminho WebSocket já existente no projeto. */
     public void insertReading(Leitura data) throws SQLException {
-        data.deviceId = deviceId;
-        data.co2 = co2;
-        data.temperature = temperature;
-        data.humidity = humidity;
-        data.measuredAt = measuredAt == null ? null : measuredAt.toInstant().toString();
         saveRead(data);
     }
 
@@ -294,25 +293,24 @@ public class DatabaseManager {
         if (data == null) {
             throw new IllegalArgumentException("A leitura não pode ser nula.");
         }
-        String deviceId = validateDeviceId(data.deviceId);
+        String deviceId = validateDeviceId(data.getDeviceId());
 
-        if (data.co2 == null || data.co2 < 0) {
+        if (data.getCo2() == null || data.getCo2() < 0) {
             throw new IllegalArgumentException("CO2 deve ser um inteiro maior ou igual a zero.");
         }
-        if (data.temperature == null || !Double.isFinite(data.temperature)
-                || data.temperature < -40.0 || data.temperature > 100.0) {
+        if (data.getTemperature() == null || !Double.isFinite(data.getTemperature())
+                || data.getTemperature() < -40.0 || data.getTemperature() > 100.0) {
             throw new IllegalArgumentException("Temperatura deve estar entre -40 e 100 °C.");
         }
-        if (data.humidity == null || !Double.isFinite(data.humidity)
-                || data.humidity < 0.0 || data.humidity > 100.0) {
+        if (data.getHumidity() == null || !Double.isFinite(data.getHumidity())
+                || data.getHumidity() < 0.0 || data.getHumidity() > 100.0) {
             throw new IllegalArgumentException("Umidade deve estar entre 0 e 100%.");
         }
-        if (data.measuredAt == null || data.measuredAt.isBlank()) {
+        if (data.getMeasuredAt() == null || data.getMeasuredAt().isBlank()) {
             throw new IllegalArgumentException("measuredAt é obrigatório e deve estar no formato ISO-8601.");
         }
 
-        return new ValidatedReading(deviceId, data.co2, data.temperature, data.humidity,
-                parseMeasuredAt(data.measuredAt));
+        return new ValidatedReading(deviceId, data.getCo2(), data.getTemperature(), data.getHumidity(), parseMeasuredAt(data.getMeasuredAt()));
     }
 
     private static String validateDeviceId(String deviceId) {

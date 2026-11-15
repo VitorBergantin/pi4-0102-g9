@@ -6,7 +6,7 @@
 CREATE TABLE sensor_reading (
     device_id VARCHAR(50) NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
-    co2 DOUBLE PRECISION,
+    co2 INTEGER NOT NULL,
     temperature DOUBLE PRECISION,
     humidity DOUBLE PRECISION
 );
@@ -39,7 +39,7 @@ Além das leituras, podemos criar uma tabela para registrar os alertas identific
 CREATE TABLE log_alerta (
     id BIGSERIAL PRIMARY KEY,
     measuredAt TIMESTAMPTZ NOT NULL,
-    co2 DOUBLE PRECISION,
+    co2 INTEGER NOT NULL,
     temperaturae DOUBLE PRECISION,
     humidity DOUBLE PRECISION,
     cause TEXT

@@ -1,6 +1,6 @@
 package br.puc.campinas.co2nect;
 
-import br.puc.campinas.co2nect.mqtt.MqttSubscriber;
+import cliente.LeitorMqtt.java;
 import br.puc.campinas.co2nect.repository.ReadingRepository;
 import br.puc.campinas.co2nect.service.SensorReadingService;
 
@@ -74,7 +74,7 @@ public class App {
 
         ReadingRepository repository = new ReadingRepository(dbUrl, dbUser, dbPass);
         SensorReadingService service = new SensorReadingService(repository);
-        MqttSubscriber subscriber = new MqttSubscriber(brokerUrl, mqttUser, mqttPass, mqttCaCert, topics, service);
+        LeitorMqtt subscriber = new LeitorMqtt(brokerUrl, mqttUser, mqttPass, mqttCaCert, topics, service);
 
         /**
          * - Quando Ctrl + C é apertado no terminal (ou quando o Docker manda um comando docker stop), o sistema operacional envia um sinal de morte súbita (SIGINT ou SIGTERM) para a JVM.
