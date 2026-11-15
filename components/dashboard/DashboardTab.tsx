@@ -1,11 +1,18 @@
+
 "use client"
 
-import React, { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { EspSelector } from "@/components/EspSelector"
 import { MetricsCards } from "@/components/dashboard/MetricsCards"
 import { ChartsContainer } from "@/components/dashboard/ChartsContainer"
-import { historyMock, getDeviceOnlineStatus } from "@/lib/mocks/readingsMock"
+import {
+  historyMock,
+  simulatedReadings,
+  getDeviceOnlineStatus,
+} from "@/lib/mocks/readingsMock"
+import { initMqttConnection } from "@/lib/services/mqtt"
+import type { DeviceStatus, SensorReading } from "@/lib/types/sensor"
 import { cn } from "@/lib/utils"
 
 interface DashboardTabProps {
@@ -14,30 +21,67 @@ interface DashboardTabProps {
 }
 
 function formatLastUpdate(dateString: string): string {
-  try {
-    return new Intl.DateTimeFormat("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(dateString))
-  } catch {
-    return dateString
-  }
+  const date = new Date(dateString)
+
+  if (Number.isNaN(date.getTime())) return dateString
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date)
 }
 
 export function DashboardTab({
   selectedDevice: controlledDevice,
   onDeviceChange,
 }: DashboardTabProps = {}) {
-  const availableDevices = useMemo(() => {
-    const devices = Array.from(new Set(historyMock.map((r) => r.deviceId)))
-    return devices.length > 0 ? devices : ["ESP32-DEV", "ESP32-SALA-01", "ESP32-LAB-02"]
-  }, [])
-
-  const [internalDevice, setInternalDevice] = useState<string>(
-    () => availableDevices[0]
-  )
+  const [realtimeReadings, setRealtimeReadings] = useState<SensorReading[]>([])
+  const [deviceStatuses, setDeviceStatuses] = useState<Record<string, boolean>>({})
+  const [simulationIndex, setSimulationIndex] = useState(0)
+  const [internalDevice, setInternalDevice] = useState("ESP32-DEV")
 
   const currentDevice = controlledDevice ?? internalDevice
+
+  // Executado sempre que uma nova medição válida é recebida.
+  const handleNovaMedicao = useCallback((reading: SensorReading) => {
+    if (
+      !reading.deviceId ||
+      !Number.isFinite(Date.parse(reading.timestamp)) ||
+      !Number.isFinite(reading.co2) ||
+      !Number.isFinite(reading.temperature) ||
+      !Number.isFinite(reading.humidity)
+    ) {
+      return
+    }
+
+    setRealtimeReadings((previous) => [
+      reading,
+      ...previous,
+    ].slice(0, 100))
+  }, [])
+
+  const handleDeviceStatus = useCallback((status: DeviceStatus) => {
+    setDeviceStatuses((previous) => ({
+      ...previous,
+      [status.deviceId]: status.online,
+    }))
+  }, [])
+
+  // Abre a conexão e a encerra quando o componente é desmontado.
+  useEffect(() => {
+    return initMqttConnection(handleNovaMedicao, handleDeviceStatus)
+  }, [handleNovaMedicao, handleDeviceStatus])
+
+  // Lista dinâmica de dispositivos, incluindo os recebidos via MQTT.
+  const availableDevices = useMemo(() => {
+    return Array.from(
+      new Set(
+        [...historyMock, ...realtimeReadings].map(
+          (reading) => reading.deviceId
+        )
+      )
+    )
+  }, [realtimeReadings])
 
   function handleDeviceChange(device: string) {
     if (onDeviceChange) {
@@ -47,22 +91,59 @@ export function DashboardTab({
     }
   }
 
+  // Combina leituras recebidas com os exemplos disponíveis.
   const filteredReadings = useMemo(() => {
-    return historyMock.filter((reading) => reading.deviceId === currentDevice)
-  }, [currentDevice])
+    return [...realtimeReadings, ...historyMock]
+      .filter((reading) => reading.deviceId === currentDevice)
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() -
+          new Date(a.timestamp).getTime()
+      )
+  }, [currentDevice, realtimeReadings])
 
+  // A leitura mais recente é usada pelos três cards.
   const currentReading = filteredReadings[0]
-  const isOnline = getDeviceOnlineStatus(currentDevice)
+
+  const hasRealtimeReading = realtimeReadings.some(
+    (reading) =>
+      reading.id === currentReading?.id &&
+      reading.deviceId === currentDevice
+  )
+
+  const hasRealStatus = Object.prototype.hasOwnProperty.call(
+    deviceStatuses,
+    currentDevice
+  )
+
+  const isOnline = hasRealStatus
+    ? deviceStatuses[currentDevice]
+    : getDeviceOnlineStatus(currentDevice)
+
+  // Botão de teste disponível somente em desenvolvimento.
+  function handleSimularMedicao() {
+    const values =
+      simulatedReadings[simulationIndex % simulatedReadings.length]
+
+    handleNovaMedicao({
+      id: `sim-${Date.now()}-${simulationIndex}`,
+      deviceId: currentDevice,
+      timestamp: new Date().toISOString(),
+      ...values,
+    })
+
+    setSimulationIndex((previous) => previous + 1)
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* Cabeçalho da Aba + Seletor de Dispositivo ESP32 com Indicador de Conexão */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-2xl font-bold tracking-tight text-foreground">
               Dashboard
             </h2>
+
             {currentReading && (
               <Badge
                 variant="secondary"
@@ -71,13 +152,19 @@ export function DashboardTab({
                 Última leitura: {formatLastUpdate(currentReading.timestamp)}
               </Badge>
             )}
+
+            <Badge variant="outline">
+              {hasRealtimeReading
+                ? "Nova medição recebida"
+                : "Dados de exemplo"}
+            </Badge>
           </div>
+
           <p className="text-sm text-muted-foreground mt-0.5">
-            Monitoramento em tempo real das condições ambientais dos sensores.
+            Monitoramento das condições ambientais dos sensores.
           </p>
         </div>
 
-        {/* Seletor + Badge de Conectividade do Sensor */}
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <EspSelector
             selectedDevice={currentDevice}
@@ -89,26 +176,41 @@ export function DashboardTab({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-xl border px-3 h-9 text-xs font-semibold shadow-2xs transition-all",
               isOnline
-                ? "border-emerald-500/30 bg-emerald-50/80 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-500/30"
-                : "border-slate-300/80 bg-slate-100 text-slate-500 dark:border-border dark:bg-muted dark:text-muted-foreground"
+                ? "border-emerald-500/30 bg-emerald-50/80 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-slate-300/80 bg-slate-100 text-slate-500 dark:border-border dark:bg-muted"
             )}
-            title={isOnline ? `${currentDevice} está online` : `${currentDevice} está offline`}
           >
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
-                isOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                isOnline ? "bg-emerald-500" : "bg-slate-400"
               )}
             />
-            <span>{isOnline ? "Online" : "Offline"}</span>
+            <span>
+              {hasRealStatus
+                ? isOnline
+                  ? "Online"
+                  : "Offline"
+                : isOnline
+                  ? "Online (simulado)"
+                  : "Offline (simulado)"}
+            </span>
           </div>
+
+          {process.env.NODE_ENV === "development" && (
+            <button
+              type="button"
+              onClick={handleSimularMedicao}
+              className="h-9 rounded-xl border border-emerald-600 bg-emerald-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
+            >
+              Simular nova medição
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Cards de Indicadores Atuais (Carrossel no Mobile, Grid no Desktop) */}
       <MetricsCards reading={currentReading} />
 
-      {/* Gráficos: CO₂ em Destaque (Largura Total) + Temperatura e Umidade Abaixo */}
       <ChartsContainer readings={filteredReadings} />
     </div>
   )
