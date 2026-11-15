@@ -1,10 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { SensorReading } from "@/lib/types/sensor"
 
-// Carrega as variáveis de ambiente (suporta tanto o padrão do Next.js NEXT_PUBLIC quanto VITE_)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co"
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key"
 
 // Cliente de conexão ao Supabase
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
@@ -13,6 +11,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
  * Consulta o banco de dados Supabase e retorna as medições ordenadas pela data decrescente.
  */
 export async function fetchReadings(limit = 50): Promise<SensorReading[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.warn("[Supabase] Variáveis de ambiente ausentes. Aguardando configuração.")
+    return []
+  }
+  
   const { data, error } = await supabase
     .from("sensor_reading") // FROM sensor_reading
     .select("id, device_id, co2, temperature, humidity, measured_at") // SELECT ...
