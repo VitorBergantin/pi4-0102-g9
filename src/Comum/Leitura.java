@@ -1,4 +1,4 @@
-package src.Cliente;
+package src.Comum;
 
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
@@ -70,7 +70,7 @@ public class Leitura extends Comunicado {
         return deviceId;
     }
 
-    public double getCo2() {
+    public int getCo2() {
         return co2;
     }
 

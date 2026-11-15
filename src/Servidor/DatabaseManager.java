@@ -295,15 +295,13 @@ public class DatabaseManager {
         }
         String deviceId = validateDeviceId(data.getDeviceId());
 
-        if (data.getCo2() == null || data.getCo2() < 0) {
+        if (data.getCo2() < 0) {
             throw new IllegalArgumentException("CO2 deve ser um inteiro maior ou igual a zero.");
         }
-        if (data.getTemperature() == null || !Double.isFinite(data.getTemperature())
-                || data.getTemperature() < -40.0 || data.getTemperature() > 100.0) {
+        if (!Double.isFinite(data.getTemperature()) || data.getTemperature() < -40.0 || data.getTemperature() > 100.0) {
             throw new IllegalArgumentException("Temperatura deve estar entre -40 e 100 °C.");
         }
-        if (data.getHumidity() == null || !Double.isFinite(data.getHumidity())
-                || data.getHumidity() < 0.0 || data.getHumidity() > 100.0) {
+        if (!Double.isFinite(data.getHumidity()) || data.getHumidity() < 0.0 || data.getHumidity() > 100.0) {
             throw new IllegalArgumentException("Umidade deve estar entre 0 e 100%.");
         }
         if (data.getMeasuredAt() == null || data.getMeasuredAt().isBlank()) {

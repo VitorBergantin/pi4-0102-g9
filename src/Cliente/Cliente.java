@@ -92,14 +92,18 @@ public class Cliente {
 
         do {
             try {
+               // LeitorMqtt lança as Leituras no BlockingQueue
+                Leitura leitura = fila.take();
+
+                servidor.receba(leitura); 
 
             } catch (InterruptedException e) {
                 System.out.println("Conexão com o cliente interrompida");
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                System.err.println("Erro ao enviar leitura ao servidor: " + e.getMessage());
             }
-            // LeitorMqtt lança as Leituras no BlockingQueue
-            Leitura leitura = fila.take();
-
-            servidor.receba(leitura);
 
         } while (true);
     }
