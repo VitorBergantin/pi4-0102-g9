@@ -6,6 +6,7 @@ import { SensorReading } from "@/lib/types/sensor"
 
 interface PieChartProps {
   readings?: SensorReading[]
+  isLoading?: boolean
 }
 
 interface CustomLabelProps {
@@ -115,7 +116,7 @@ function renderPieLabel({ cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRa
   )
 }
 
-export function AirPieChart({ readings = [] }: PieChartProps) {
+export function AirPieChart({ readings = [], isLoading = false }: PieChartProps) {
   const total = readings.length
 
   const goodCount = readings.filter((r) => r.co2 < 800).length
@@ -164,7 +165,12 @@ export function AirPieChart({ readings = [] }: PieChartProps) {
       </CardHeader>
 
       <CardContent className="flex-1 flex items-center justify-center p-4">
-        {total === 0 ? (
+        {isLoading ? (
+          <div className="h-75 flex flex-col items-center justify-center gap-3 text-xs text-muted-foreground">
+            <span className="h-6 w-6 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+            <span>Calculando proporções...</span>
+          </div>
+        ) : total === 0 ? (
           <div className="h-75 flex items-center justify-center text-xs text-muted-foreground">
             Sem dados para o gráfico
           </div>

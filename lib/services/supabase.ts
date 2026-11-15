@@ -14,10 +14,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
  */
 export async function fetchReadings(limit = 50): Promise<SensorReading[]> {
   const { data, error } = await supabase
-    .from("sensor_reading")
-    .select("id, device_id, co2, temperature, humidity, measured_at")
-    .order("measured_at", { ascending: false })
-    .limit(limit)
+    .from("sensor_reading") // FROM sensor_reading
+    .select("id, device_id, co2, temperature, humidity, measured_at") // SELECT ...
+    .order("measured_at", { ascending: false }) // ORDER BY measured_at DESC
+    .limit(limit) // LIMIT limit
 
   if (error) {
     console.error("Erro ao consultar Supabase:", error)

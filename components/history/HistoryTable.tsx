@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 interface HistoryTableProps {
   readings?: SensorReading[]
   onlyCritical?: boolean
+  isLoading?: boolean
 }
 
 // Formata a data ISO para o padrão pt-BR
@@ -35,7 +36,7 @@ function formatDateTime(isoString: string): string {
   }
 }
 
-export function HistoryTable({ readings = [], onlyCritical = false }: HistoryTableProps) {
+export function HistoryTable({ readings = [], onlyCritical = false, isLoading = false }: HistoryTableProps) {
   return (
     <Card className="rounded-2xl border border-border bg-white dark:bg-card shadow-sm overflow-hidden h-fit flex flex-col">
       <CardHeader className="pb-3 border-b border-border/60">
@@ -44,16 +45,31 @@ export function HistoryTable({ readings = [], onlyCritical = false }: HistoryTab
             <CardTitle className="text-sm font-bold text-foreground">
               {onlyCritical ? "Ocorrências Críticas" : "Registros de Telemetria"}
             </CardTitle>
+
             <CardDescription className="text-xs text-muted-foreground">
-              Exibindo {readings.length}{" "}
-              {readings.length === 1 ? "registro encontrado" : "registros encontrados"}
+              {isLoading ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Sincronizando com Supabase...</span>
+                </>
+              ) : (
+                <>
+                  Exibindo {readings.length}{" "}
+                  {readings.length === 1 ? "registro encontrado" : "registros encontrados"}
+                </>
+              )}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="p-0">
-        {readings.length === 0 ? (
+        {isLoading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3 text-xs text-muted-foreground">
+            <span className="h-6 w-6 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+            <span>Carregando medições do banco de dados...</span>
+          </div>
+        ) : readings.length === 0 ? (
           <div className="py-12 text-center text-xs text-muted-foreground">
             Nenhum registro encontrado para os filtros selecionados.
           </div>

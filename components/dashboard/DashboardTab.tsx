@@ -2,18 +2,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { cn } from "@/lib/utils"
+
+import { fetchReadings } from "@/lib/services/supabase"
+import { initMqttConnection } from "@/lib/services/mqtt"
+import type { DeviceStatus, SensorReading } from "@/lib/types/sensor"
+
 import { Badge } from "@/components/ui/badge"
 import { EspSelector } from "@/components/EspSelector"
 import { MetricsCards } from "@/components/dashboard/MetricsCards"
 import { ChartsContainer } from "@/components/dashboard/ChartsContainer"
-import {
-  historyMock,
-  simulatedReadings,
-  getDeviceOnlineStatus,
-} from "@/lib/mocks/readingsMock"
-import { initMqttConnection } from "@/lib/services/mqtt"
-import type { DeviceStatus, SensorReading } from "@/lib/types/sensor"
-import { cn } from "@/lib/utils"
 
 interface DashboardTabProps {
   selectedDevice?: string
@@ -31,37 +29,59 @@ function formatLastUpdate(dateString: string): string {
   }).format(date)
 }
 
-export function DashboardTab({
-  selectedDevice: controlledDevice,
-  onDeviceChange,
-}: DashboardTabProps = {}) {
-  const [realtimeReadings, setRealtimeReadings] = useState<SensorReading[]>([])
-  const [deviceStatuses, setDeviceStatuses] = useState<Record<string, boolean>>({})
-  const [simulationIndex, setSimulationIndex] = useState(0)
-  const [internalDevice, setInternalDevice] = useState("ESP32-DEV")
+export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange }: DashboardTabProps = {}) {
+  const [readings, setReadings] = useState<SensorReading[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  
+  const [deviceReading, setDeviceReading] = useState<SensorReading[]>([])
+  const [deviceStatus, setDeviceStatus] = useState<Record<string, boolean>>({})
+  const [device, setDevice] = useState("ESP32-DEV")
 
-  const currentDevice = controlledDevice ?? internalDevice
+  const currentDevice = controlledDevice ?? device
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setIsLoading(true);
+        const data = await fetchReadings(100)
+
+        if (data.length > 0) {
+          setReadings(data)
+        }
+      } catch (e) {
+        console.error("Falha ao carregar telemetria do Supabase:", e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+
 
   // Executado sempre que uma nova medição válida é recebida.
-  const handleNovaMedicao = useCallback((reading: SensorReading) => {
+  const handleNewReading = useCallback((reading: SensorReading) => {
     if (
       !reading.deviceId ||
       !Number.isFinite(Date.parse(reading.timestamp)) ||
-      !Number.isFinite(reading.co2) ||
-      !Number.isFinite(reading.temperature) ||
-      !Number.isFinite(reading.humidity)
+      reading.co2 <= 0 ||
+      reading.humidity < 0 ||
+      reading.humidity > 100 ||
+      reading.temperature < -40 ||
+      reading.temperature > 90
     ) {
       return
     }
 
-    setRealtimeReadings((previous) => [
+    setDeviceReading((previous) => [
       reading,
       ...previous,
     ].slice(0, 100))
   }, [])
 
   const handleDeviceStatus = useCallback((status: DeviceStatus) => {
-    setDeviceStatuses((previous) => ({
+    setDeviceStatus((previous) => ({
       ...previous,
       [status.deviceId]: status.online,
     }))
@@ -69,73 +89,56 @@ export function DashboardTab({
 
   // Abre a conexão e a encerra quando o componente é desmontado.
   useEffect(() => {
-    return initMqttConnection(handleNovaMedicao, handleDeviceStatus)
-  }, [handleNovaMedicao, handleDeviceStatus])
+    return initMqttConnection(handleNewReading, handleDeviceStatus)
+  }, [handleNewReading, handleDeviceStatus])
 
   // Lista dinâmica de dispositivos, incluindo os recebidos via MQTT.
   const availableDevices = useMemo(() => {
-    return Array.from(
-      new Set(
-        [...historyMock, ...realtimeReadings].map(
-          (reading) => reading.deviceId
-        )
-      )
+    const devices = Array.from(
+      new Set([...readings, ...deviceReading].map((r) => r.deviceId))
     )
-  }, [realtimeReadings])
+
+    return devices.length > 0 ? devices : ["ESP32-SALA-101", "ESP32-SALA-204", "ESP32-LAB-INFO"]
+  }, [readings, deviceReading])
 
   function handleDeviceChange(device: string) {
     if (onDeviceChange) {
       onDeviceChange(device)
     } else {
-      setInternalDevice(device)
+      setDevice(device)
     }
   }
 
-  // Combina leituras recebidas com os exemplos disponíveis.
+  useEffect(() => {
+    if (availableDevices.length > 0 && !availableDevices.includes(currentDevice)) {
+      handleDeviceChange(availableDevices[0])
+    }
+  }, [availableDevices, currentDevice])
+
+  // Combina leituras em tempo real com o histórico carregado do Supabase
   const filteredReadings = useMemo(() => {
-    return [...realtimeReadings, ...historyMock]
+    return [...deviceReading, ...readings]
       .filter((reading) => reading.deviceId === currentDevice)
       .sort(
         (a, b) =>
           new Date(b.timestamp).getTime() -
           new Date(a.timestamp).getTime()
       )
-  }, [currentDevice, realtimeReadings])
+  }, [currentDevice, deviceReading, readings])
 
   // A leitura mais recente é usada pelos três cards.
   const currentReading = filteredReadings[0]
 
-  const hasRealtimeReading = realtimeReadings.some(
+  const hasRealtimeReading = deviceReading.some(
     (reading) =>
       reading.id === currentReading?.id &&
       reading.deviceId === currentDevice
   )
 
-  const hasRealStatus = Object.prototype.hasOwnProperty.call(
-    deviceStatuses,
-    currentDevice
-  )
+  // Status de conexão direto do broker MQTT
+  const isOnline = Boolean(deviceStatus[currentDevice])
 
-  const isOnline = hasRealStatus
-    ? deviceStatuses[currentDevice]
-    : getDeviceOnlineStatus(currentDevice)
-
-  // Botão de teste disponível somente em desenvolvimento.
-  function handleSimularMedicao() {
-    const values =
-      simulatedReadings[simulationIndex % simulatedReadings.length]
-
-    handleNovaMedicao({
-      id: `sim-${Date.now()}-${simulationIndex}`,
-      deviceId: currentDevice,
-      timestamp: new Date().toISOString(),
-      ...values,
-    })
-
-    setSimulationIndex((previous) => previous + 1)
-  }
-
-  return (
+    return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -155,8 +158,8 @@ export function DashboardTab({
 
             <Badge variant="outline">
               {hasRealtimeReading
-                ? "Nova medição recebida"
-                : "Dados de exemplo"}
+                ? "Tempo real (MQTT)"
+                : "Histórico (Supabase)"}
             </Badge>
           </div>
 
@@ -186,32 +189,23 @@ export function DashboardTab({
                 isOnline ? "bg-emerald-500" : "bg-slate-400"
               )}
             />
-            <span>
-              {hasRealStatus
-                ? isOnline
-                  ? "Online"
-                  : "Offline"
-                : isOnline
-                  ? "Online (simulado)"
-                  : "Offline (simulado)"}
-            </span>
+            <span>{isOnline ? "Online" : "Offline"}</span>
           </div>
-
-          {process.env.NODE_ENV === "development" && (
-            <button
-              type="button"
-              onClick={handleSimularMedicao}
-              className="h-9 rounded-xl border border-emerald-600 bg-emerald-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
-            >
-              Simular nova medição
-            </button>
-          )}
         </div>
       </div>
 
-      <MetricsCards reading={currentReading} />
+      {isLoading ? (
+        <div className="py-24 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground bg-white dark:bg-card border rounded-2xl shadow-sm">
+          <span className="h-8 w-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+          <span>Sincronizando telemetria com o banco de dados...</span>
+        </div>
+      ) : (
+        <>
+          <MetricsCards reading={currentReading} />
 
-      <ChartsContainer readings={filteredReadings} />
+          <ChartsContainer readings={filteredReadings} />
+        </>
+      )}
     </div>
   )
 }

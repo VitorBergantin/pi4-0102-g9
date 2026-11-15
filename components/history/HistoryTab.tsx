@@ -1,14 +1,41 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
+import { cn } from "@/lib/utils"
+
+import { fetchReadings } from "@/lib/services/supabase"
+import type { SensorReading } from "@/lib/types/sensor"
+
 import { CriticalAlerts } from "@/components/history/CriticalAlerts"
 import { HistoryFilters } from "@/components/history/HistoryFilters"
 import { HistoryTable } from "@/components/history/HistoryTable"
 import { AirPieChart } from "@/components/history/AirPieChart"
 import { historyMock } from "@/lib/mocks/readingsMock"
-import { cn } from "@/lib/utils"
 
 export function HistoryTab() {
+  const [readings, setReadings] = useState<SensorReading[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setIsLoading(true)
+        const data = await fetchReadings(100);
+
+        if (data.length > 0) {
+          setReadings(data)
+        }
+      } catch (e) {
+        console.error("Falha ao carregar do Supabase:", e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, []) // O array vazio diz para executar apenas uma vez quando a aba for exibida
+
+
   // Estados para os filtros
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
@@ -17,22 +44,18 @@ export function HistoryTab() {
 
   // Lista dinâmica de dispositivos presentes no mock/banco
   const availableDevices = useMemo(() => {
-    const devices = Array.from(new Set(historyMock.map((r) => r.deviceId)))
+    const devices = Array.from(new Set(readings.map((r) => r.deviceId)))
     return devices.length > 0 ? devices : ["ESP32-DEV", "ESP32-SALA-01", "ESP32-LAB-02"]
-  }, [])
+  }, [readings])
 
   // Aplicação dos filtros sobre a lista de leituras
   const filteredReadings = useMemo(() => {
-    return historyMock.filter((reading) => {
+    return readings.filter((reading) => {
       // Filtro por sensor / dispositivo
-      if (selectedDevice !== "all" && reading.deviceId !== selectedDevice) {
-        return false
-      }
+      if (selectedDevice !== "all" && reading.deviceId !== selectedDevice) return false
 
       // Filtro por leitura crítica (> 1200 ppm)
-      if (onlyCritical && reading.co2 <= 1200) {
-        return false
-      }
+      if (onlyCritical && reading.co2 <= 1200) return false
 
       // Filtro por data inicial
       if (startDate) {
@@ -50,31 +73,21 @@ export function HistoryTab() {
 
       return true
     })
-  }, [startDate, endDate, selectedDevice, onlyCritical])
+  }, [readings, startDate, endDate, selectedDevice, onlyCritical])
 
   // Indicadores consolidados para os cards superiores
   const totalReadings = filteredReadings.length
   const avgCo2 =
     totalReadings > 0
-      ? Math.round(
-          filteredReadings.reduce((sum, item) => sum + item.co2, 0) / totalReadings
-        )
+      ? Math.round(filteredReadings.reduce((sum, item) => sum + item.co2, 0) / totalReadings)
       : 0
   const avgTemperature =
     totalReadings > 0
-      ? Number(
-          (
-            filteredReadings.reduce((sum, item) => sum + item.temperature, 0) /
-            totalReadings
-          ).toFixed(1)
-        )
+      ? Number((filteredReadings.reduce((sum, item) => sum + item.temperature, 0) / totalReadings).toFixed(1))
       : 0
   const avgHumidity =
     totalReadings > 0
-      ? Math.round(
-          filteredReadings.reduce((sum, item) => sum + item.humidity, 0) /
-            totalReadings
-        )
+      ? Math.round(filteredReadings.reduce((sum, item) => sum + item.humidity, 0) / totalReadings)
       : 0
   const criticalCount = filteredReadings.filter((item) => item.co2 > 1200).length
 
@@ -106,6 +119,7 @@ export function HistoryTab() {
         avgHumidity={avgHumidity}
         criticalCount={criticalCount}
         onlyCritical={onlyCritical}
+        isLoading={isLoading}
       />
 
       {/* Barra de Filtros (Datas, Dispositivo e Críticas) */}
@@ -125,12 +139,12 @@ export function HistoryTab() {
       {/* Seção Principal: No modo "Apenas Críticas", oculta o gráfico de proporção (100% crítico) e expande a tabela */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className={cn(onlyCritical ? "lg:col-span-12" : "lg:col-span-7")}>
-          <HistoryTable readings={filteredReadings} onlyCritical={onlyCritical} />
+          <HistoryTable readings={filteredReadings} onlyCritical={onlyCritical} isLoading={isLoading} />
         </div>
 
         {!onlyCritical && (
           <div className="lg:col-span-5">
-            <AirPieChart readings={filteredReadings} />
+            <AirPieChart readings={filteredReadings} isLoading={isLoading} />
           </div>
         )}
       </div>

@@ -18,6 +18,7 @@ interface CriticalAlertsProps {
   avgHumidity?: number
   criticalCount?: number
   onlyCritical?: boolean
+  isLoading?: boolean
 }
 
 function getCo2Description(avgCo2: number): string {
@@ -34,6 +35,7 @@ export function CriticalAlerts({
   avgHumidity = 55,
   criticalCount = 14,
   onlyCritical = false,
+  isLoading = false
 }: CriticalAlertsProps) {
   const allCards: AlertCardItem[] = [
     {
@@ -142,7 +144,7 @@ export function CriticalAlerts({
                   !card.isAlert && isTeal && "text-teal-600 dark:text-teal-400"
                 )}
               >
-                <span>{card.value}</span>
+                <span>{isLoading ? "--" : card.value}</span>
                 {card.unit && (
                   <span className="text-sm font-normal text-muted-foreground">
                     {card.unit}
@@ -151,7 +153,7 @@ export function CriticalAlerts({
               </div>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                {card.description}
+                {isLoading? "" : card.description}
               </p>
             </CardContent>
           </Card>
