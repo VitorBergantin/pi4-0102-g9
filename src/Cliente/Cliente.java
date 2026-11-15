@@ -83,7 +83,6 @@ public class Cliente {
             String senha = Configuracao.obter("MQTT_PASSWORD", null);
             String certificado = Configuracao.obter("MQTT_CA_CERT", null);
 
-            // TODO: Conferir se o caminho do mqtt_ca_cert está correto como: certs/emqxsl-ca.crt
             LeitorMqtt leitor = new LeitorMqtt(fila, broker, usuario, senha, certificado);
             leitor.iniciar();
         } catch (Exception e) {

@@ -51,7 +51,7 @@ public class App {
                 dbUser = getEnv("DB_USER", "co2nect_user");
                 dbPass = getEnv("DB_PASSWORD", "co2nect_pass");
 
-                brokerUrl = getEnv("MQTT_BROKER_URL", "tcp://localhost:1883");
+                brokerUrl = getEnv("MQTT_BROKER_URL", "MQTT_BROKER_TCP");
                 mqttUser = getEnv("MQTT_USER", null);
                 mqttPass = getEnv("MQTT_PASSWORD", null);
                 mqttCaCert = getEnv("MQTT_CA_CERT", null);

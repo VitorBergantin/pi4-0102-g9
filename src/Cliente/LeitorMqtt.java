@@ -12,11 +12,12 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import java.nio.charset.StandardCharsets;
 
 public class LeitorMqtt implements MqttCallbackExtended {
 
-    // TODO: Verificar se é este caminho mesmo
-    private static final String TOPICO = "ar/sala01/leituras";
+    private static final String TOPICO_TELEMETRIA = "co2nect/+/telemetry";
+    private static final String TOPICO_STATUS = "co2nect/+/status";
 
     private MqttClient cliente;
     private BlockingQueue<Leitura> fila;
@@ -65,32 +66,46 @@ public class LeitorMqtt implements MqttCallbackExtended {
 
     }
 
-    @Override
+   @Override
     public void connectComplete(boolean reconectando, String endereco) {
-
-        System.out.println(reconectando ? "Reconectado ao broker MQTT!" : "Conectado ao broker MQTT!");
-
         try {
-            cliente.subscribe(TOPICO, 1);
-            System.out.println("Aguardando leituras do ESP32...");
+            System.out.println("Conectado ao broker MQTT: " + endereco);
+
+            cliente.subscribe(TOPICO_TELEMETRIA, 1);
+            cliente.subscribe(TOPICO_STATUS, 1);
+
+            System.out.println("Inscrito nos tópicos MQTT:");
+            System.out.println("- " + TOPICO_TELEMETRIA);
+            System.out.println("- " + TOPICO_STATUS);
+
         } catch (MqttException e) {
-            System.err.println("Erro ao assinar tópico: " + e.getMessage());
+            System.err.println("Erro ao assinar tópicos MQTT: " + e.getMessage());
         }
     }
 
     @Override
     public void messageArrived(String topic, MqttMessage mensagem) throws Exception {
 
-        System.out.println("Mensagem recebida no tópico: " + topic);
+        String conteudo = new String(
+            mensagem.getPayload(),
+            java.nio.charset.StandardCharsets.UTF_8
+        );
 
-        try {
+        if (topic.endsWith("/telemetry")) {
+
             Leitura leitura = Leitura.pegaLeitura(mensagem);
             fila.put(leitura);
 
-            System.out.println("Leitura convertida com sucesso!");
+            System.out.println("Leitura recebida de " + topic);
 
-        } catch (RuntimeException e) {
-            System.err.println("Erro ao interpretar ou validar a leitura: " + e.getMessage());
+        } else if (topic.endsWith("/status")) {
+            if ("1".equals(conteudo)) {
+                System.out.println("Dispositivo online: " + topic);
+            } else if ("0".equals(conteudo)) {
+                System.out.println("Dispositivo offline: " + topic);
+            } else {
+                System.err.println("Status desconhecido: " + conteudo);
+            }
         }
     }
 
