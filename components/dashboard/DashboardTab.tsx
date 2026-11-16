@@ -204,6 +204,8 @@ export function DashboardTab({
       <DashboardActiveAlert
         deviceId={currentDevice}
         alertStates={{ ...alertStates, ...telemetryAlertStates }}
+        currentReading={currentReading}
+        currentReadingSource={hasRealtimeReading ? "MQTT" : "Supabase"}
       />
 
       {isLoading ? (

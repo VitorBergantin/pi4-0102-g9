@@ -5,6 +5,22 @@ Não interpreta um campo oficial de alerta CT7 `novaMedicao`, não cria tópicos
 e não abre outra conexão. Um contrato oficial poderá substituir o adaptador
 `createTelemetryAlertUpdate` futuramente.
 
+O banner identifica a última leitura recebida do dispositivo (MQTT), seu valor
+e instante (`measuredAt`, preservado na revisão interna). Quando há contexto
+distinto nos cards, informa a origem, o valor e o instante exibidos por eles;
+o Supabase é identificado como "histórico salvo". Se a leitura dos cards for
+posterior, o título identifica o alerta como referente a uma leitura anterior
+do dispositivo. Horários iguais não são tratados como posteriores: valores
+de CO₂ diferentes nesse empate recebem um aviso, sem mudar o desempate ou o
+estado do alerta. Fontes diferentes, por si só, não comprovam que sejam duas
+medições diferentes.
+
+Essa comparação é apenas informativa: Supabase e status de conectividade não
+ativam nem desativam o alerta. A medição MQTT não confirma, por si só, a condição
+atual do ambiente. Comparações com dados de outro dispositivo, horário inválido
+ou CO₂ não finito são omitidas; sem horário válido do alerta, informa-se que ele
+está indisponível. Não há alteração da validação ou seleção das leituras dos cards.
+
 ## Regra e ordenação
 
 - `lib/air-quality.ts` centraliza CO₂ crítico: **acima de 1.200 ppm**.
@@ -64,7 +80,7 @@ executa o mesmo caminho quando recebe mensagens pelo broker configurado.
 Outros testes cobrem mensagens inválidas, duplicatas, eventos antigos, seleção,
 reconexão, remontagem e preservação dos indicadores e dados dos gráficos.
 
-## Validação desta implementação
+## Validação original do H06.5
 
 - 79 testes passaram em quatro arquivos. Os 46 testes da etapa interna foram
   mantidos; o teste que antes exigia ausência de banner com 1.800 ppm teve essa
@@ -83,7 +99,28 @@ reconexão, remontagem e preservação dos indicadores e dados dos gráficos.
 - Os testes não substituem uma verificação com broker e dispositivo físicos,
   nem uma inspeção visual em navegador/leitor de tela.
 
-## Compatibilidade com a H04.3 pendente
+## Validação da correção de apresentação
+
+- A suíte completa passou com 100 testes em cinco arquivos: os 92 anteriores
+  e oito casos adicionais de limites da comparação. Os 79 testes originais
+  do H06.5 foram preservados sem alterações.
+- Os novos casos verificam fontes com horário e valor iguais, conflitos no
+  mesmo horário, offsets equivalentes, precisão de milissegundos, dispositivos
+  diferentes, leitura ausente e timestamps inválidos. A revisão fora da faixa
+  de `Date` é um caso defensivo de propriedade interna isolada, não um payload.
+- TypeScript e build com configuração local fictícia passaram. O build não
+  valida um banco Supabase ou dispositivo físico.
+- O ESLint de `ActiveAlert`, `DashboardActiveAlert` e do novo arquivo de testes
+  passou. Em `DashboardTab`, permanecem o erro `react-hooks/set-state-in-effect`
+  e o aviso `react-hooks/exhaustive-deps` da seleção automática; ambos também
+  foram reproduzidos na versão original da `origin/main`.
+- `git diff --check` passou. A apresentação visual, a responsividade e os
+  anúncios por leitor de tela continuam dependendo de validação manual.
+
+## Histórico de compatibilidade com a H04.3
+
+A H04.3 já está integrada na base desta correção. As notas abaixo registram
+os cuidados da integração original.
 
 A sobreposição está em `DashboardTab.tsx` e `lib/services/mqtt.ts`. Ao combinar
 as alterações, preservar a consulta periódica, correção de status e deduplicação
