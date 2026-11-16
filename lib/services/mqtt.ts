@@ -1,29 +1,62 @@
-import mqtt, { MqttClient } from "mqtt"
-import { SensorReading, DeviceStatus } from "@/lib/types/sensor"
 
-const mqttUrl = process.env.NEXT_PUBLIC_MQTT_WS_URL || "ws://localhost:9001"
+import mqtt, { type MqttClient } from "mqtt"
+import type { SensorReading, DeviceStatus } from "@/lib/types/sensor"
+
+const mqttUrl =
+  process.env.NEXT_PUBLIC_MQTT_WS_URL || "ws://localhost:9001"
+
 const mqttUser = process.env.NEXT_PUBLIC_MQTT_USER
 const mqttPassword = process.env.NEXT_PUBLIC_MQTT_PASSWORD
 
-/**
- * Valida se os valores da medição respeitam os limites físicos dos sensores,
- * espelhando as mesmas regras aplicadas pelo servidor Java.
- */
+// Valida as medições antes de enviá-las ao Dashboard.
 function isValidReading(reading: SensorReading): boolean {
-  if (!reading.deviceId || reading.deviceId.trim() === "") return false
+  if (!reading.deviceId.trim()) return false
+
   if (Number.isNaN(Date.parse(reading.timestamp))) return false
+
+  if (
+    !Number.isFinite(reading.co2) ||
+    !Number.isFinite(reading.temperature) ||
+    !Number.isFinite(reading.humidity)
+  ) {
+    return false
+  }
+
   if (reading.co2 <= 0) return false
-  if (reading.humidity < 0 || reading.humidity > 100) return false
   if (reading.temperature < -40 || reading.temperature > 90) return false
+  if (reading.humidity < 0 || reading.humidity > 100) return false
+
   return true
 }
 
-/**
- * Conecta ao broker MQTT via WebSocket.
- * 
- * Localmente: ws://localhost:9001
- * Nuvem (EMQX): wss://f082ab82.ala.us-east-1.emqxsl.com:8084
- */
+// O ESP32 publica "1" para online e "0" para offline.
+// Também aceitamos JSON com o campo status.
+function parseDeviceStatus(message: string): boolean | null {
+  if (message === "1") return true
+  if (message === "0") return false
+
+  try {
+    const parsed: unknown = JSON.parse(message)
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return null
+    }
+
+    const status = (parsed as { status?: unknown }).status
+
+    if (status === 1 || status === "1") return true
+    if (status === 0 || status === "0") return false
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 export function initMqttConnection(
   onReading?: (reading: SensorReading) => void,
   onStatus?: (status: DeviceStatus) => void
@@ -31,81 +64,142 @@ export function initMqttConnection(
   console.log("[MQTT] Conectando ao broker em:", mqttUrl)
 
   const client: MqttClient = mqtt.connect(mqttUrl, {
-    clientId: "co2nect-web-" + Math.random().toString(16).substring(2, 8),
+    clientId:
+      "co2nect-web-" + Math.random().toString(16).substring(2, 8),
     username: mqttUser,
     password: mqttPassword,
     clean: true,
-    reconnectPeriod: 3000, // Tenta reconectar a cada 3s em caso de perda de conexão
+    reconnectPeriod: 3000,
   })
 
   client.on("connect", () => {
-    // Se o componente foi desmontado enquanto conectava, não tenta assinar tópicos
-    if (client.disconnecting) {
-      return
-    }
-    
+    if (client.disconnecting) return
+
     console.log("[MQTT] Conectado ao broker com sucesso.")
 
-    const topics = ["co2nect/+/telemetry", "co2nect/+/status"]
-    client.subscribe(topics, (err) => {
-      if (err) {
-        console.error("[MQTT] Falha ao assinar tópicos:", err)
+    const topics = [
+      "co2nect/+/telemetry",
+      "co2nect/+/status",
+    ]
+
+    client.subscribe(topics, (error) => {
+      if (error) {
+        console.error("[MQTT] Falha ao assinar tópicos:", error)
       } else {
-        console.log("[MQTT] Tópicos assinados com sucesso:", topics)
+        console.log("[MQTT] Tópicos assinados:", topics)
       }
     })
   })
 
-  client.on("message", (topic: string, payload: Buffer) => {
-    try {
-      const data = JSON.parse(payload.toString())
+  client.on("message", (topic, payload) => {
+    const message = payload.toString().trim()
 
-      if (topic.endsWith("/telemetry")) {
-        const formattedReading: SensorReading = {
-          id: `mqtt-${Date.now()}`,
-          deviceId: data.deviceId || topic.split("/")[1] || "ESP32",
-          timestamp: data.measuredAt || new Date().toISOString(),
-          co2: Number(data.co2),
-          temperature: Number(data.temperature),
-          humidity: Number(data.humidity),
-        }
+    const topicParts = topic.split("/")
 
-        if (!isValidReading(formattedReading)) {
-          console.warn("[MQTT] Medição descartada por conter valores fora dos limites válidos:", formattedReading)
-          return
-        }
+    if (
+      topicParts.length !== 3 ||
+      topicParts[0] !== "co2nect" ||
+      !topicParts[1]
+    ) {
+      return
+    }
 
-        console.log("[MQTT] Nova medição recebida:", formattedReading)
+    const deviceId = topicParts[1]
+    const messageType = topicParts[2]
 
-        if (onReading) {
-          onReading(formattedReading)
-        }
-      } else if (topic.endsWith("/status")) {
-        const deviceId = data.deviceId || topic.split("/")[1] || "ESP32"
-        const isOnline = data.status === 1
+    // STATUS DO ESP32
+    if (messageType === "status") {
+      const online = parseDeviceStatus(message)
 
-        console.log(`[MQTT] Status do dispositivo ${deviceId}:`, isOnline ? "Online" : "Offline")
-
-        if (onStatus) {
-          onStatus({
-            deviceId,
-            online: isOnline,
-            timestamp: new Date().toISOString(),
-          })
-        }
+      if (online === null) {
+        console.warn(
+          `[MQTT] Status inválido para ${deviceId}:`,
+          message
+        )
+        return
       }
+
+      console.log(
+        `[MQTT] Dispositivo ${deviceId}:`,
+        online ? "Online" : "Offline"
+      )
+
+      onStatus?.({
+        deviceId,
+        online,
+        timestamp: new Date().toISOString(),
+      })
+
+      return
+    }
+
+    // MEDIÇÕES DO ESP32
+    if (messageType !== "telemetry") return
+
+    try {
+      const data: unknown = JSON.parse(message)
+
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        Array.isArray(data)
+      ) {
+        console.warn("[MQTT] Telemetria inválida:", message)
+        return
+      }
+
+      const values = data as Record<string, unknown>
+
+      const formattedReading: SensorReading = {
+        id: `mqtt-${Date.now()}-${Math.random()
+          .toString(16)
+          .slice(2)}`,
+        deviceId,
+        timestamp:
+          typeof values.measuredAt === "string"
+            ? values.measuredAt
+            : new Date().toISOString(),
+        co2: Number(values.co2),
+        temperature: Number(values.temperature),
+        humidity: Number(values.humidity),
+      }
+
+      if (!isValidReading(formattedReading)) {
+        console.warn(
+          "[MQTT] Medição descartada por valores inválidos:",
+          formattedReading
+        )
+        return
+      }
+
+      console.log(
+        "[MQTT] Nova medição recebida:",
+        formattedReading
+      )
+
+      onReading?.(formattedReading)
     } catch (error) {
-      console.error("[MQTT] Erro ao decodificar JSON recebido:", error)
+      console.error(
+        "[MQTT] Erro ao interpretar telemetria:",
+        error
+      )
     }
   })
 
-  client.on("error", (err) => {
-    console.error("[MQTT] Erro no cliente MQTT:", err)
+  client.on("reconnect", () => {
+    console.log("[MQTT] Tentando reconectar ao broker...")
   })
 
-  // Retorna função de limpeza (cleanup) para fechar conexão caso o componente seja desmontado
+  client.on("offline", () => {
+    console.warn("[MQTT] Broker indisponível.")
+  })
+
+  client.on("error", (error) => {
+    console.error("[MQTT] Erro de conexão:", error)
+  })
+
   return () => {
-    console.log("[MQTT] Fechando conexão com o broker...")
-    client.end()
+    console.log("[MQTT] Encerrando conexão.")
+    client.end(true)
   }
 }

@@ -18,10 +18,15 @@ interface DashboardTabProps {
   onDeviceChange?: (device: string) => void
 }
 
+const REFRESH_INTERVAL = 5000
+const MAX_READINGS = 100
+
 function formatLastUpdate(dateString: string): string {
   const date = new Date(dateString)
 
-  if (Number.isNaN(date.getTime())) return dateString
+  if (Number.isNaN(date.getTime())) {
+    return dateString
+  }
 
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
@@ -29,116 +34,238 @@ function formatLastUpdate(dateString: string): string {
   }).format(date)
 }
 
-export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange }: DashboardTabProps = {}) {
+export function DashboardTab({
+  selectedDevice: controlledDevice,
+  onDeviceChange,
+}: DashboardTabProps = {}) {
+  // Histórico recuperado do Supabase.
   const [readings, setReadings] = useState<SensorReading[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
-  
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Medições e status recebidos pelo MQTT.
   const [deviceReading, setDeviceReading] = useState<SensorReading[]>([])
-  const [deviceStatus, setDeviceStatus] = useState<Record<string, boolean>>({})
+  const [deviceStatus, setDeviceStatus] = useState<
+    Record<string, boolean>
+  >({})
+
+  // Dispositivo selecionado no Dashboard.
   const [device, setDevice] = useState("ESP32-DEV")
 
   const currentDevice = controlledDevice ?? device
 
+  // -------------------------------------------------------
+  // SUPABASE: CONSULTA AUTOMÁTICA A CADA 5 SEGUNDOS
+  // -------------------------------------------------------
+
   useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
     async function loadData() {
       try {
-        setIsLoading(true);
-        const data = await fetchReadings(100)
+        // Busca as 100 medições mais recentes do banco.
+        const data = await fetchReadings(MAX_READINGS)
 
+        if (cancelled) return
+
+        // Atualiza os registros quando existem resultados.
+        // A lista anterior é mantida caso uma consulta
+        // temporariamente não retorne medições.
         if (data.length > 0) {
           setReadings(data)
         }
-      } catch (e) {
-        console.error("Falha ao carregar telemetria do Supabase:", e)
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "[Supabase] Falha ao atualizar medições:",
+            error
+          )
+        }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) {
+          setIsLoading(false)
+
+          // Agenda a próxima busca após terminar a atual.
+          // Evita consultas sobrepostas.
+          timeoutId = setTimeout(
+            loadData,
+            REFRESH_INTERVAL
+          )
+        }
       }
     }
 
-    loadData()
-  }, [])
+    // Primeira consulta assim que o Dashboard é aberto.
+    void loadData()
 
+    // Encerra a atualização ao sair do Dashboard.
+    return () => {
+      cancelled = true
 
-
-  // Executado sempre que uma nova medição válida é recebida.
-  const handleNewReading = useCallback((reading: SensorReading) => {
-    if (
-      !reading.deviceId ||
-      !Number.isFinite(Date.parse(reading.timestamp)) ||
-      reading.co2 <= 0 ||
-      reading.humidity < 0 ||
-      reading.humidity > 100 ||
-      reading.temperature < -40 ||
-      reading.temperature > 90
-    ) {
-      return
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+      }
     }
-
-    setDeviceReading((previous) => [
-      reading,
-      ...previous,
-    ].slice(0, 100))
   }, [])
 
-  const handleDeviceStatus = useCallback((status: DeviceStatus) => {
-    setDeviceStatus((previous) => ({
-      ...previous,
-      [status.deviceId]: status.online,
-    }))
-  }, [])
+  // -------------------------------------------------------
+  // MQTT: RECEBIMENTO DE NOVAS MEDIÇÕES
+  // -------------------------------------------------------
 
-  // Abre a conexão e a encerra quando o componente é desmontado.
+  const handleNewReading = useCallback(
+    (reading: SensorReading) => {
+      if (
+        !reading.deviceId ||
+        !Number.isFinite(Date.parse(reading.timestamp)) ||
+        !Number.isFinite(reading.co2) ||
+        !Number.isFinite(reading.temperature) ||
+        !Number.isFinite(reading.humidity) ||
+        reading.co2 <= 0 ||
+        reading.humidity < 0 ||
+        reading.humidity > 100 ||
+        reading.temperature < -40 ||
+        reading.temperature > 90
+      ) {
+        console.warn(
+          "[MQTT] Medição inválida descartada:",
+          reading
+        )
+        return
+      }
+
+      setDeviceReading((previous) => [
+        reading,
+        ...previous,
+      ].slice(0, MAX_READINGS))
+    },
+    []
+  )
+
+  // -------------------------------------------------------
+  // MQTT: STATUS ONLINE / OFFLINE
+  // -------------------------------------------------------
+
+  const handleDeviceStatus = useCallback(
+    (status: DeviceStatus) => {
+      setDeviceStatus((previous) => ({
+        ...previous,
+        [status.deviceId]: status.online,
+      }))
+    },
+    []
+  )
+
+  // Inicializa a conexão MQTT e encerra quando
+  // o Dashboard é desmontado.
   useEffect(() => {
-    return initMqttConnection(handleNewReading, handleDeviceStatus)
+    return initMqttConnection(
+      handleNewReading,
+      handleDeviceStatus
+    )
   }, [handleNewReading, handleDeviceStatus])
 
-  // Lista dinâmica de dispositivos, incluindo os recebidos via MQTT.
+  // -------------------------------------------------------
+  // DISPOSITIVOS DISPONÍVEIS
+  // -------------------------------------------------------
+
   const availableDevices = useMemo(() => {
     const devices = Array.from(
-      new Set([...readings, ...deviceReading].map((r) => r.deviceId))
+      new Set(
+        [...readings, ...deviceReading].map(
+          (reading) => reading.deviceId
+        )
+      )
     )
 
-    return devices.length > 0 ? devices : ["ESP32-SALA-101", "ESP32-SALA-204", "ESP32-LAB-INFO"]
+    return devices.length > 0
+      ? devices
+      : [
+          "ESP32-SALA-101",
+          "ESP32-SALA-204",
+          "ESP32-LAB-INFO",
+        ]
   }, [readings, deviceReading])
 
-  function handleDeviceChange(device: string) {
+  function handleDeviceChange(selected: string) {
     if (onDeviceChange) {
-      onDeviceChange(device)
+      onDeviceChange(selected)
     } else {
-      setDevice(device)
+      setDevice(selected)
     }
   }
 
+  // Seleciona um dispositivo disponível quando
+  // o selecionado não estiver presente.
   useEffect(() => {
-    if (availableDevices.length > 0 && !availableDevices.includes(currentDevice)) {
+    if (
+      availableDevices.length > 0 &&
+      !availableDevices.includes(currentDevice)
+    ) {
       handleDeviceChange(availableDevices[0])
     }
   }, [availableDevices, currentDevice])
 
-  // Combina leituras em tempo real com o histórico carregado do Supabase
+  // -------------------------------------------------------
+  // COMBINA SUPABASE E MQTT
+  // -------------------------------------------------------
+
   const filteredReadings = useMemo(() => {
-    return [...deviceReading, ...readings]
-      .filter((reading) => reading.deviceId === currentDevice)
+    const combined = [
+      ...deviceReading,
+      ...readings,
+    ].filter(
+      (reading) =>
+        reading.deviceId === currentDevice
+    )
+
+    // Evita repetir a mesma medição quando ela
+    // aparece pelo MQTT e depois pelo Supabase.
+    const uniqueReadings = new Map<string, SensorReading>()
+
+    for (const reading of combined) {
+      const key = [
+        reading.deviceId,
+        reading.timestamp,
+        reading.co2,
+        reading.temperature,
+        reading.humidity,
+      ].join("|")
+
+      if (!uniqueReadings.has(key)) {
+        uniqueReadings.set(key, reading)
+      }
+    }
+
+    return Array.from(uniqueReadings.values())
       .sort(
         (a, b) =>
           new Date(b.timestamp).getTime() -
           new Date(a.timestamp).getTime()
       )
+      .slice(0, MAX_READINGS)
   }, [currentDevice, deviceReading, readings])
 
-  // A leitura mais recente é usada pelos três cards.
+  // Leitura mais recente usada nos cards.
   const currentReading = filteredReadings[0]
 
+  // Indica se a leitura mais recente chegou via MQTT.
   const hasRealtimeReading = deviceReading.some(
     (reading) =>
-      reading.id === currentReading?.id &&
-      reading.deviceId === currentDevice
+      reading.deviceId === currentDevice &&
+      reading.timestamp === currentReading?.timestamp &&
+      reading.co2 === currentReading?.co2 &&
+      reading.temperature === currentReading?.temperature &&
+      reading.humidity === currentReading?.humidity
   )
 
-  // Status de conexão direto do broker MQTT
+  // O status é informado pelo broker MQTT.
   const isOnline = Boolean(deviceStatus[currentDevice])
 
-    return (
+  // -------------------------------------------------------
+  // INTERFACE DO DASHBOARD
+  // -------------------------------------------------------
+
+  return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -152,7 +279,10 @@ export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange 
                 variant="secondary"
                 className="text-xs font-medium px-2.5 py-0.5"
               >
-                Última leitura: {formatLastUpdate(currentReading.timestamp)}
+                Última leitura:{" "}
+                {formatLastUpdate(
+                  currentReading.timestamp
+                )}
               </Badge>
             )}
 
@@ -186,10 +316,15 @@ export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange 
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
-                isOnline ? "bg-emerald-500" : "bg-slate-400"
+                isOnline
+                  ? "bg-emerald-500"
+                  : "bg-slate-400"
               )}
             />
-            <span>{isOnline ? "Online" : "Offline"}</span>
+
+            <span>
+              {isOnline ? "Online" : "Offline"}
+            </span>
           </div>
         </div>
       </div>
@@ -197,13 +332,18 @@ export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange 
       {isLoading ? (
         <div className="py-24 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground bg-white dark:bg-card border rounded-2xl shadow-sm">
           <span className="h-8 w-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-          <span>Sincronizando telemetria com o banco de dados...</span>
+
+          <span>
+            Sincronizando telemetria com o banco de dados...
+          </span>
         </div>
       ) : (
         <>
           <MetricsCards reading={currentReading} />
 
-          <ChartsContainer readings={filteredReadings} />
+          <ChartsContainer
+            readings={filteredReadings}
+          />
         </>
       )}
     </div>
