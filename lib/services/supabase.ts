@@ -1,31 +1,100 @@
-import { createClient } from "@supabase/supabase-js"
-import { SensorReading } from "@/lib/types/sensor"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { CRITICAL_CO2_PPM } from "@/lib/air-quality"
+import type { SensorReading } from "@/lib/types/sensor"
 
-// Carrega as variáveis de ambiente (suporta tanto o padrão do Next.js NEXT_PUBLIC quanto VITE_)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+// O Next.js expõe ao navegador somente as variáveis NEXT_PUBLIC_*.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+let initializationError: Error | null = null
+let client: SupabaseClient | null = null
 
-// Cliente de conexão ao Supabase
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabaseAnonKey) {
+  initializationError = new Error(
+    "Supabase não configurado. Verifique NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local."
+  )
+} else {
+  try {
+    client = createClient(supabaseUrl, supabaseAnonKey)
+  } catch (error) {
+    initializationError = new Error(
+      "Não foi possível inicializar o Supabase. Confira a URL e a chave publicável.",
+      { cause: error }
+    )
+  }
+}
+
+// Mantém a exportação para compatibilidade com eventuais usos no projeto.
+export const supabase = client
+
+function requireSupabase(): SupabaseClient {
+  if (supabase) return supabase
+  throw initializationError ?? new Error("Supabase indisponível.")
+}
+
+export interface ReadingFilters {
+  deviceId?: string
+  startDate?: string // YYYY-MM-DD (data local do navegador)
+  endDate?: string   // YYYY-MM-DD (inclusive)
+  onlyCritical?: boolean
+}
+
+function localStartOfDay(date: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Data inválida: use o formato AAAA-MM-DD.")
+  }
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime()) ||
+      `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}` !== date) {
+    throw new Error("Data inválida no filtro de histórico.")
+  }
+  return parsed
+}
 
 /**
- * Consulta o banco de dados Supabase e retorna as medições ordenadas pela data decrescente.
+ * Consulta até `limit` registros APÓS filtrar no Supabase.
+ * Uma consulta vazia retorna []; uma consulta com falha LANÇA um erro.
  */
-export async function fetchReadings(limit = 50): Promise<SensorReading[]> {
-  const { data, error } = await supabase
-    .from("sensor_reading") // FROM sensor_reading
-    .select("id, device_id, co2, temperature, humidity, measured_at") // SELECT ...
-    .order("measured_at", { ascending: false }) // ORDER BY measured_at DESC
-    .limit(limit) // LIMIT limit
-
-  if (error) {
-    console.error("Erro ao consultar Supabase:", error)
-    return []
+export async function fetchReadings(
+  limit = 50,
+  filters: ReadingFilters = {}
+): Promise<SensorReading[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+    throw new Error("Limite de consulta inválido.")
   }
 
-  // Mapeia os dados do schema SQL (snake_case) para a interface TypeScript (camelCase)
-  return (data || []).map((item) => ({
+  const db = requireSupabase()
+  let query = db
+    .from("sensor_reading")
+    .select("id, device_id, co2, temperature, humidity, measured_at")
+
+  if (filters.deviceId && filters.deviceId !== "all") {
+    query = query.eq("device_id", filters.deviceId)
+  }
+  if (filters.startDate) {
+    query = query.gte("measured_at", localStartOfDay(filters.startDate).toISOString())
+  }
+  if (filters.endDate) {
+    const nextDay = localStartOfDay(filters.endDate)
+    nextDay.setDate(nextDay.getDate() + 1)
+    query = query.lt("measured_at", nextDay.toISOString())
+  }
+  if (filters.startDate && filters.endDate && filters.startDate > filters.endDate) {
+    throw new Error("A data inicial não pode ser posterior à data final.")
+  }
+  if (filters.onlyCritical) {
+    query = query.gt("co2", CRITICAL_CO2_PPM)
+  }
+
+  const { data, error } = await query
+    .order("measured_at", { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    throw new Error(`Falha ao consultar medições no Supabase: ${error.message}`)
+  }
+
+  return (data ?? []).map(item => ({
     id: item.id,
     deviceId: item.device_id,
     timestamp: item.measured_at,
@@ -33,4 +102,26 @@ export async function fetchReadings(limit = 50): Promise<SensorReading[]> {
     temperature: Number(item.temperature),
     humidity: Number(item.humidity),
   }))
+}
+
+/**
+ * Lista dispositivos cadastrados separadamente do limite de 100 medições.
+ * Requer permissão de SELECT para a chave publicável em sensor_device (RLS).
+ * Se não houver permissão, quem chama deve oferecer uma alternativa local.
+ */
+export async function fetchDeviceIds(): Promise<string[]> {
+  const { data, error } = await requireSupabase()
+    .from("sensor_device")
+    .select("device_id")
+    .order("device_id", { ascending: true })
+
+  if (error) {
+    throw new Error(`Falha ao consultar dispositivos: ${error.message}`)
+  }
+
+  return Array.from(new Set(
+    (data ?? []).map(item => item.device_id).filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0
+    )
+  ))
 }
