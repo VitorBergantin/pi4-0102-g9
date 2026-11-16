@@ -61,10 +61,17 @@ export function initMqttConnection(
       const data = JSON.parse(payload.toString())
 
       if (topic.endsWith("/telemetry")) {
+        // Sem horário real da medição não é possível ordenar os alertas.
+        if (
+          typeof data?.measuredAt !== "string" ||
+          !Number.isFinite(Date.parse(data.measuredAt)) ||
+          !["co2", "temperature", "humidity"].every(field => typeof data[field] === "number")
+        ) return
+
         const formattedReading: SensorReading = {
           id: `mqtt-${Date.now()}`,
           deviceId: data.deviceId || topic.split("/")[1] || "ESP32",
-          timestamp: data.measuredAt || new Date().toISOString(),
+          timestamp: data.measuredAt,
           co2: Number(data.co2),
           temperature: Number(data.temperature),
           humidity: Number(data.humidity),
