@@ -10,6 +10,16 @@ const mqttPassword = process.env.NEXT_PUBLIC_MQTT_PASSWORD
 
 export type MqttConnectionState = "connecting" | "connected" | "disconnected"
 
+function isValidMqttUrl(url: string): boolean {
+  if (!/^wss?:\/\/[^/?#\s]+/i.test(url)) return false
+  try {
+    const parsed = new URL(url)
+    return ["ws:", "wss:"].includes(parsed.protocol) && Boolean(parsed.hostname) && !parsed.href.includes("#")
+  } catch {
+    return false
+  }
+}
+
 function isValidReading(reading: SensorReading): boolean {
   if (typeof reading.deviceId !== "string" || !reading.deviceId.trim()) return false
   if (!Number.isFinite(Date.parse(reading.timestamp))) return false
@@ -49,7 +59,7 @@ export function initMqttConnection(
   onConnectionChange?.("connecting")
 
   // MQTT no navegador exige WebSocket. Uma URL inválida não deve quebrar a tela.
-  if (!/^wss?:\/\//i.test(mqttUrl)) {
+  if (!isValidMqttUrl(mqttUrl)) {
     console.error("[MQTT] URL inválida: use ws:// ou wss://.")
     onConnectionChange?.("disconnected")
     return () => {}

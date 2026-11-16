@@ -95,12 +95,39 @@ co2nect-frontend/
 pnpm install
 ```
 
-2. Executar o servidor de desenvolvimento:
+2. Configurar o ambiente local antes de iniciar o projeto. Se ainda não existir
+`.env.local`, copie o exemplo e preencha os valores adequados ao seu ambiente:
+```powershell
+Copy-Item .env.exemple .env.local
+```
+
+- `NEXT_PUBLIC_SUPABASE_URL`: URL HTTP/HTTPS do projeto Supabase.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: chave pública anon/publishable; nunca usar `service_role`.
+- `NEXT_PUBLIC_MQTT_WS_URL`: URL completa com host, usando `ws://` ou `wss://`, sem fragmento (`#`). Em uma página HTTPS, use `wss://`.
+- `NEXT_PUBLIC_MQTT_USER` e `NEXT_PUBLIC_MQTT_PASSWORD`: opcionais, conforme a autenticação do broker.
+
+As variáveis `NEXT_PUBLIC_*` são incorporadas ao JavaScript enviado ao navegador
+durante o build. São públicas: não devem conter segredos de servidor. Quando
+necessárias, as credenciais MQTT também ficam visíveis ao cliente e devem ser de
+uma conta restrita de leitura, nunca administrativa. Não versione `.env.local`
+nem coloque credenciais reais no exemplo.
+
+No deploy, forneça essas variáveis **antes de executar `pnpm build`**. Mudanças
+exigem novo build; alterar apenas o ambiente de `pnpm start` não atualiza o
+JavaScript gerado. Em desenvolvimento, reinicie `pnpm dev` após mudar `.env.local`.
+
+O exemplo MQTT local aponta para o computador do navegador. Use somente um
+broker de desenvolvimento autorizado; a configuração não inicia esse broker.
+Fora dos testes automatizados, não há fallback se a URL estiver ausente.
+URLs MQTT inválidas não iniciam a conexão; URLs válidas ainda dependem de
+disponibilidade, autenticação e permissões do serviço.
+
+3. Executar o servidor de desenvolvimento:
 ```bash
 pnpm dev
 ```
 
-3. Acessar a aplicacao no navegador:
+4. Acessar a aplicacao no navegador:
 ```text
 http://localhost:3000
 ```
