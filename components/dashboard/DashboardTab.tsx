@@ -7,15 +7,20 @@ import { cn } from "@/lib/utils"
 import { fetchReadings } from "@/lib/services/supabase"
 import { initMqttConnection } from "@/lib/services/mqtt"
 import type { DeviceStatus, SensorReading } from "@/lib/types/sensor"
+import { applyInternalAlertUpdate, type DeviceAlertStates } from "@/lib/dashboard/alert-state"
+import { createTelemetryAlertUpdate } from "@/lib/dashboard/telemetry-alert"
 
 import { Badge } from "@/components/ui/badge"
 import { EspSelector } from "@/components/EspSelector"
 import { MetricsCards } from "@/components/dashboard/MetricsCards"
 import { ChartsContainer } from "@/components/dashboard/ChartsContainer"
+import { DashboardActiveAlert } from "@/components/dashboard/DashboardActiveAlert"
 
 interface DashboardTabProps {
   selectedDevice?: string
   onDeviceChange?: (device: string) => void
+  /** Estados internos para isolamento; a telemetria real tem precedência. */
+  alertStates?: DeviceAlertStates
 }
 
 function formatLastUpdate(dateString: string): string {
@@ -29,12 +34,13 @@ function formatLastUpdate(dateString: string): string {
   }).format(date)
 }
 
-export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange }: DashboardTabProps = {}) {
+export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange, alertStates }: DashboardTabProps = {}) {
   const [readings, setReadings] = useState<SensorReading[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   
   const [deviceReading, setDeviceReading] = useState<SensorReading[]>([])
   const [deviceStatus, setDeviceStatus] = useState<Record<string, boolean>>({})
+  const [telemetryAlertStates, setTelemetryAlertStates] = useState<DeviceAlertStates>({})
   const [device, setDevice] = useState("ESP32-DEV")
 
   const currentDevice = controlledDevice ?? device
@@ -62,22 +68,17 @@ export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange 
 
   // Executado sempre que uma nova medição válida é recebida.
   const handleNewReading = useCallback((reading: SensorReading) => {
-    if (
-      !reading.deviceId ||
-      !Number.isFinite(Date.parse(reading.timestamp)) ||
-      reading.co2 <= 0 ||
-      reading.humidity < 0 ||
-      reading.humidity > 100 ||
-      reading.temperature < -40 ||
-      reading.temperature > 90
-    ) {
-      return
-    }
+    const alertUpdate = createTelemetryAlertUpdate(reading)
+    if (!alertUpdate) return
 
-    setDeviceReading((previous) => [
-      reading,
-      ...previous,
-    ].slice(0, 100))
+    setTelemetryAlertStates(previous => applyInternalAlertUpdate(previous, alertUpdate))
+    setDeviceReading(previous => {
+      // Mesmo instante por dispositivo: mantém a primeira leitura aceita.
+      if (previous.some(item => item.deviceId === reading.deviceId &&
+        Date.parse(item.timestamp) === alertUpdate.state.revision)) return previous
+
+      return [reading, ...previous].slice(0, 100)
+    })
   }, [])
 
   const handleDeviceStatus = useCallback((status: DeviceStatus) => {
@@ -193,6 +194,11 @@ export function DashboardTab({ selectedDevice: controlledDevice, onDeviceChange 
           </div>
         </div>
       </div>
+
+      <DashboardActiveAlert
+        deviceId={currentDevice}
+        alertStates={{ ...alertStates, ...telemetryAlertStates }}
+      />
 
       {isLoading ? (
         <div className="py-24 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground bg-white dark:bg-card border rounded-2xl shadow-sm">
