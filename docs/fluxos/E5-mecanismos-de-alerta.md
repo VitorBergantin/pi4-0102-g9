@@ -31,7 +31,7 @@ sequenceDiagram
     Frontend-->>Coordenador: Atualiza a conectividade sem alterar o alerta
 ```
 
-**Contratos usados:** CT1 `publishReading` e CT3 `sensorStatus` no caminho MQTT implementado. As fichas ainda precisam refletir o Frontend como consumidor. CT3 informa conectividade, não uma condição de alerta.
+**Contratos usados:** CT1 `publishReading` e CT3 `sensorStatus` no caminho MQTT implementado. CT3 informa conectividade, não uma condição de alerta.
 
 O H06.5 não recebe um campo oficial de alerta do Backend nem implementa CT7 `novaMedicao`. Esse identificador é a referência do ticket para o evento anteriormente previsto; sua ficha não foi localizada. CT2 `sensor_reading` e CT5 `listReadings` não participam da atualização do banner: o histórico não inicializa seu estado. Sem telemetria aceita, o estado é desconhecido. Uma reconexão na mesma montagem preserva o último estado, que pode ficar desatualizado; remontar o dashboard reinicia os estados, sem recuperação garantida de mensagens perdidas.
 
