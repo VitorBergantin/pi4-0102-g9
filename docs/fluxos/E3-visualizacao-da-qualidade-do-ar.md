@@ -37,7 +37,7 @@ sequenceDiagram
     Frontend-->>Coordenador: Atualiza a conectividade
 ```
 
-**Contratos usados:** CT1 `publishReading` e CT3 `sensorStatus` no caminho MQTT; CT2 `sensor_reading` como referência à tabela consultada, com a divergência de acesso indicada acima. As fichas CT1 e CT3 ainda listam apenas o Java como consumidor e precisam refletir também o consumo pelo Frontend.
+**Contratos usados:** CT1 `publishReading` e CT3 `sensorStatus` no caminho MQTT; CT2 `sensor_reading` como referência à tabela consultada, com a divergência de acesso indicada acima.
 
 ## Arquitetura prevista e contratos pendentes
 
