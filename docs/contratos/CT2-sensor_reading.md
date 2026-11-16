@@ -5,8 +5,10 @@
 | Fronteira | Banco |
 | Quem chama | Backend Java (único módulo que lê e grava nesta tabela) |
 | Quem responde | Banco PostgreSQL |
-| Atende | E2, E6, E7 |
+| Atende | E2, E3, E6, E7 |
 | Como chamar | Tabela `sensor_reading`, chave `id` |
+
+> **Observação de implementação:** Esta ficha define o Backend Java como responsável pelo acesso ao banco. O Frontend atual também consulta leituras via Supabase; essa divergência, documentada no E3, não representa conformidade com o contrato.
 
 ## Entrada e saída
 Os campos gravados são os mesmos campos lidos.
