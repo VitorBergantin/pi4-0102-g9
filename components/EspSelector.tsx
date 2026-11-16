@@ -20,15 +20,16 @@ interface EspSelectorProps {
 
 export function EspSelector({
   selectedDevice,
-  availableDevices = ["ESP32-DEV", "ESP32-SALA-01", "ESP32-LAB-02"],
+  availableDevices = [],
   onDeviceChange,
   showAllOption = false,
   layout = "inline",
   className,
 }: EspSelectorProps) {
   const isStacked = layout === "stacked"
-  const displayLabel =
-    selectedDevice === "all" ? "Todos os sensores" : selectedDevice
+  const displayLabel = selectedDevice === "all"
+    ? "Todos os sensores"
+    : selectedDevice || "Selecione o sensor"
 
   return (
     <div
@@ -42,12 +43,11 @@ export function EspSelector({
       <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
         {isStacked ? "Dispositivo" : "Dispositivo:"}
       </span>
-
       <Select
         value={selectedDevice}
-        onValueChange={(val) =>
-          onDeviceChange?.(val ?? (showAllOption ? "all" : availableDevices[0]))
-        }
+        onValueChange={val => {
+          if (val) onDeviceChange?.(val)
+        }}
       >
         <SelectTrigger
           className={cn(
@@ -55,18 +55,13 @@ export function EspSelector({
             isStacked ? "w-full rounded-lg bg-background" : "min-w-42.5 rounded-xl bg-card"
           )}
         >
-          <SelectValue placeholder="Selecione o sensor">
-            {displayLabel}
-          </SelectValue>
+          <SelectValue placeholder="Selecione o sensor">{displayLabel}</SelectValue>
         </SelectTrigger>
-
         <SelectContent>
           {showAllOption && (
-            <SelectItem value="all" className="text-xs">
-              Todos os sensores
-            </SelectItem>
+            <SelectItem value="all" className="text-xs">Todos os sensores</SelectItem>
           )}
-          {availableDevices.map((device) => (
+          {availableDevices.map(device => (
             <SelectItem key={device} value={device} className="text-xs">
               {device}
             </SelectItem>
