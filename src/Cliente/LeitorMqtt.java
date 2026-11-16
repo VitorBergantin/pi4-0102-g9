@@ -48,8 +48,14 @@ public class LeitorMqtt implements MqttCallbackExtended {
         options.setConnectionTimeout(10);
         options.setKeepAliveInterval(60);
 
-        options.setUserName(usuario);
-        options.setPassword(senha.toCharArray());
+        if (usuario != null && !usuario.isBlank()) {
+            options.setUserName(usuario);
+        }
+
+        if (senha != null && !senha.isBlank()) {
+            options.setPassword(senha.toCharArray());
+        }
+
 
         // Configuração TLS, quando utilizada
         if (enderecoBroker.startsWith("ssl://") && caminhoCertificado != null && !caminhoCertificado.isBlank()) {

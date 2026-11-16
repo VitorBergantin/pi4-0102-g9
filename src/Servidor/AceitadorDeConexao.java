@@ -3,7 +3,7 @@ package src.Servidor;
 import java.net.*;
 import java.util.*;
 
-public class AceitadorDeConexao extends Thread {
+public class AceitadorDeConexao extends Thread implements AutoCloseable {
     private ServerSocket pedido;
     private ArrayList<Parceiro> usuarios;
     private DatabaseManager databaseManager;
@@ -25,6 +25,12 @@ public class AceitadorDeConexao extends Thread {
 
         this.databaseManager = manager;
     }
+
+    @Override
+    public void close() throws java.io.IOException {
+        this.pedido.close();
+    }
+
     @Override
     public void run() {
         for (;;) {
@@ -33,6 +39,9 @@ public class AceitadorDeConexao extends Thread {
             try {
                 conexao = this.pedido.accept();
             } catch (Exception e) {
+                if (this.pedido.isClosed()) {
+                    return;
+                }
                 continue;
             }
 
@@ -42,11 +51,13 @@ public class AceitadorDeConexao extends Thread {
                 supervisoraDeConexao = new SupervisoraDeConexao(conexao, this.usuarios, this.databaseManager);
                 //inicio da thread da supervisora para o cliente
                 supervisoraDeConexao.start();
-            } catch (Exception e) {}
-            try {
-                conexao.close();
-            } catch (Exception erroClose) {}
-            continue;
+            } catch (Exception e) {
+                // Só fecha o socket se a supervisora NÃO conseguiu iniciar.
+                // Quando ela inicia, é ela quem fecha a conexão (bloco finally do run()).
+                try {
+                    conexao.close();
+                } catch (Exception erroClose) {}
+            }
         }
     }
 }
