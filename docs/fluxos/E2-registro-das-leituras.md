@@ -5,10 +5,10 @@
 ## Passos
 
 1. O Coordenador Pedagógico mantém o ambiente sob monitoramento.
-2. O Dispositivo IoT publica uma nova leitura válida no Broker MQTT por meio de CT1 `publicarLeitura`.
-3. O Broker MQTT encaminha a leitura ao Backend por meio de CT2 `entregarLeitura`.
-4. O Backend valida os campos e determina a situação do nível de CO₂.
-5. O Backend grava a leitura na tabela `medicao` utilizando CT3.
+2. O Dispositivo IoT publica uma nova leitura válida no Broker MQTT por meio de CT1 `publishReading`.
+3. O Broker MQTT encaminha a mesma leitura CT1 `publishReading` ao Backend assinante.
+4. O Backend valida os campos da leitura antes da gravação.
+5. O Backend grava a leitura na tabela `sensor_reading` utilizando CT2.
 6. O Banco confirma a gravação e a medição fica disponível para consultas posteriores.
 
 ## Diagrama
@@ -21,10 +21,10 @@ sequenceDiagram
     participant Backend
     participant Banco
     Coordenador->>IoT: Mantém o ambiente monitorado
-    IoT->>Broker: CT1 publicarLeitura
-    Broker->>Backend: CT2 entregarLeitura
-    Backend->>Backend: Valida e classifica a leitura
-    Backend->>Banco: CT3 medicao
+    IoT->>Broker: CT1 publishReading
+    Broker->>Backend: CT1 publishReading
+    Backend->>Backend: Valida os campos da leitura
+    Backend->>Banco: CT2 sensor_reading
     Banco-->>Backend: Gravação confirmada
 ```
 
