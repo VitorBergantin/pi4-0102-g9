@@ -6,7 +6,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -19,6 +18,8 @@ import src.Configuracao.Configuracao;
 import src.Comum.Comunicado;
 import src.Comum.Leitura;
 
+import java.time.ZoneOffset;
+
 /**
  * Camada de persistência PostgreSQL do CO2NNECT.
  *
@@ -30,10 +31,12 @@ public class DatabaseManager {
     private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/co2nect_db";
     private static final String DEFAULT_USER = "co2nect_user";
     private static final String DEFAULT_PASSWORD = "co2nect_pass";
+    public static final int MAX_LIMIT = 1000;
 
     private final String url;
     private final String user;
     private final String password;
+    private static final ZoneId APP_ZONE = resolveZone();
 
     public DatabaseManager() {
         this(
@@ -57,6 +60,25 @@ public class DatabaseManager {
         return value == null || value.isBlank() ? defaultValue : value.trim();
     }
 
+    private static ZoneId resolveZone() {
+        String defaultZone = "America/Sao_Paulo";
+        String configured = setting("APP_TIMEZONE", defaultZone);
+        try {
+            return ZoneId.of(configured);
+        } catch (java.time.DateTimeException invalid) {
+            System.err.println(
+                "[DB] APP_TIMEZONE inválido (" + configured
+                + "); usando " + defaultZone
+            );
+            return ZoneId.of(defaultZone);
+        }
+    }
+
+    /** Fuso aplicado a datas ISO-8601 sem offset (escrita de measuredAt e filtros do CT5). */
+    public static ZoneId appZone() {
+        return APP_ZONE;
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " não pode ser nulo ou vazio.");
@@ -65,8 +87,18 @@ public class DatabaseManager {
     }
 
     private Connection openConnection() throws SQLException {
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException(
+                "Driver JDBC do PostgreSQL não encontrado. Verifique as dependências do Maven.",
+                e
+            );
+        }
+
         return DriverManager.getConnection(url, user, password);
     }
+
 
     /** Abre uma conexão real e propaga SQLException caso o banco esteja indisponível. */
     public boolean checkConnection() throws SQLException {
@@ -112,7 +144,7 @@ public class DatabaseManager {
                     statement.setInt(2, reading.co2());
                     statement.setBigDecimal(3, BigDecimal.valueOf(reading.temperature()));
                     statement.setBigDecimal(4, BigDecimal.valueOf(reading.humidity()));
-                    statement.setTimestamp(5, Timestamp.from(reading.measuredAt()));
+                    statement.setObject(5, OffsetDateTime.ofInstant(reading.measuredAt(), ZoneOffset.UTC));
 
                     try (ResultSet resultSet = statement.executeQuery()) {
                         if (!resultSet.next()) {
@@ -165,13 +197,18 @@ public class DatabaseManager {
         }
     }
 
-    /*
-        public List<SensorReading> listReadings(String deviceId, Instant start,
+        /**
+     * Lista as leituras de um dispositivo no intervalo [start, end], da MAIS RECENTE
+     * para a mais antiga (CT5 / histórico). O segundo critério (id DESC) desempata
+     * leituras com o mesmo horário e acompanha o índice
+     * idx_sensor_reading_device_measured_at (device_id, measured_at DESC, id DESC).
+     */
+    public List<SensorReading> listReadings(String deviceId, Instant start,
                                             Instant end, int limit) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
         validateInterval(start, end);
-        if (limit < 1 || limit > 1000) {
-            throw new IllegalArgumentException("limit deve estar entre 1 e 1000.");
+        if (limit < 1 || limit > MAX_LIMIT) {
+            throw new IllegalArgumentException("limit deve estar entre 1 e " + MAX_LIMIT + ".");
         }
 
         String sql = """
@@ -188,88 +225,34 @@ public class DatabaseManager {
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, normalizedDeviceId);
-            statement.setTimestamp(2, Timestamp.from(start));
-            statement.setTimestamp(3, Timestamp.from(end));
+            statement.setObject(2, OffsetDateTime.ofInstant(start, ZoneOffset.UTC));
+            statement.setObject(3, OffsetDateTime.ofInstant(end, ZoneOffset.UTC));
             statement.setInt(4, limit);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
-                    readings.add(mapReading(resultSet));
+                    readings.add(mapRow(resultSet));
                 }
             }
         }
         return readings;
     }
 
-    // Histórico resumido para compatibilidade: últimas 50 leituras do dispositivo.
-    public List<SensorReading> getHistory(String deviceId) throws SQLException {
+    /** Informa se o dispositivo está cadastrado em sensor_device (base do HTTP 404 do CT5). */
+    public boolean deviceExists(String deviceId) throws SQLException {
         String normalizedDeviceId = validateDeviceId(deviceId);
-        String sql = """
-                SELECT id, device_id, co2, temperature, humidity, measured_at, received_at
-                  FROM sensor_reading
-                 WHERE device_id = ?
-                 ORDER BY measured_at DESC, id DESC
-                 LIMIT 50
-                """;
+        String sql = "SELECT 1 FROM sensor_device WHERE device_id = ?";
 
-        List<SensorReading> readings = new ArrayList<>();
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, normalizedDeviceId);
             try (ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    readings.add(mapReading(resultSet));
-                }
-            }
-        }
-        return readings;
-    }
-    
-    */
-    /**
-     * Lista as leituras de um dispositivo no intervalo solicitado, mais recentes
-     * primeiro. O segundo critério (id DESC) desempata leituras com mesmo horário.
-     */
-
-
-    /** Calcula as médias diretamente no PostgreSQL para o intervalo solicitado. */
-    /*
-        public ReadingAverage getAverage(String deviceId, Instant start, Instant end) throws SQLException {
-        String normalizedDeviceId = validateDeviceId(deviceId);
-        validateInterval(start, end);
-
-        String sql = """
-                SELECT COUNT(*) AS reading_count,
-                       CASE WHEN COUNT(*) = 0 THEN NULL ELSE ROUND(AVG(co2))::BIGINT END AS co2_average,
-                       ROUND(AVG(temperature), 2) AS temperature_average,
-                       ROUND(AVG(humidity), 2) AS humidity_average
-                  FROM sensor_reading
-                 WHERE device_id = ?
-                   AND measured_at >= ?
-                   AND measured_at <= ?
-                """;
-
-        try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, normalizedDeviceId);
-            statement.setTimestamp(2, Timestamp.from(start));
-            statement.setTimestamp(3, Timestamp.from(end));
-
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    throw new SQLException("Não foi possível calcular as médias do período.");
-                }
-                long count = resultSet.getLong("reading_count");
-                long co2Value = resultSet.getLong("co2_average");
-                Long co2Average = resultSet.wasNull() ? null : co2Value;
-                BigDecimal temperatureAverage = resultSet.getBigDecimal("temperature_average");
-                BigDecimal humidityAverage = resultSet.getBigDecimal("humidity_average");
-                return new ReadingAverage(count, co2Average, temperatureAverage, humidityAverage);
+                return resultSet.next();
             }
         }
     }
 
-    private static SensorReading mapReading(ResultSet resultSet) throws SQLException {
+    private static SensorReading mapRow(ResultSet resultSet) throws SQLException {
         return new SensorReading(
                 resultSet.getLong("id"),
                 resultSet.getString("device_id"),
@@ -279,7 +262,6 @@ public class DatabaseManager {
                 resultSet.getObject("measured_at", OffsetDateTime.class),
                 resultSet.getObject("received_at", OffsetDateTime.class));
     }
-    */
 
     private static void rollbackQuietly(Connection connection) {
         try {
@@ -342,7 +324,7 @@ public class DatabaseManager {
             } catch (DateTimeParseException ignoredAgain) {
                 try {
                     return LocalDateTime.parse(normalized)
-                            .atZone(ZoneId.systemDefault())
+                            .atZone(APP_ZONE)
                             .toInstant();
                 } catch (DateTimeParseException invalid) {
                     throw new IllegalArgumentException(
@@ -351,6 +333,12 @@ public class DatabaseManager {
                 }
             }
         }
+    }
+
+        /** Linha da tabela sensor_reading (CT2) devolvida pelas consultas de histórico. */
+    public record SensorReading(long id, String deviceId, int co2, BigDecimal temperature,
+                                BigDecimal humidity, OffsetDateTime measuredAt,
+                                OffsetDateTime receivedAt) {
     }
 
     private record ValidatedReading(String deviceId, int co2, double temperature,

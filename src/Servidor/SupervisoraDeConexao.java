@@ -7,6 +7,8 @@ import java.util.*;
 import src.Comum.Comunicado;
 import src.Comum.Leitura;
 
+import java.sql.SQLException;
+
 public class SupervisoraDeConexao extends Thread {
     private Socket conexao;
     private ArrayList<Parceiro> usuarios;
@@ -30,6 +32,9 @@ public class SupervisoraDeConexao extends Thread {
         try {
             transmissor = new ObjectOutputStream(this.conexao.getOutputStream());
         } catch (Exception erro) {
+            try {
+                this.conexao.close();
+            } catch (Exception ignored) {}
             return;
         }
 
@@ -40,12 +45,29 @@ public class SupervisoraDeConexao extends Thread {
             try {
                 transmissor.close();
             } catch (Exception ignored) {}
+
+            try {
+                this.conexao.close();
+            } catch (Exception ignored) {}
+
             return;
         }
 
         try {
             this.usuario = new Parceiro(this.conexao, receptor, transmissor);
         } catch (Exception erro) {
+            try {
+                receptor.close();
+            } catch (Exception ignored) {}
+
+            try {
+                transmissor.close();
+            } catch (Exception ignored) {}
+
+            try {
+                this.conexao.close();
+            } catch (Exception ignored) {}
+
             return;
         }
 
@@ -63,7 +85,14 @@ public class SupervisoraDeConexao extends Thread {
 
                 // Adiciono a leitura ao banco
                 if (comunicado instanceof Leitura leitura) {
-                    this.databaseManager.saveRead(leitura);
+                    try {
+                        this.databaseManager.saveRead(leitura);
+                    } catch (SQLException | IllegalArgumentException erroBanco) {
+                        // Banco fora do ar ou leitura rejeitada: descarta só ESTA leitura e
+                        // mantém a conexão com o cliente; a próxima leitura abre nova conexão JDBC.
+                        System.err.println("[DB] Leitura não gravada (" + leitura.getDeviceId() + "): "
+                                + erroBanco.getMessage());
+                    }
                 }
             }
         } catch (Exception erro) {
@@ -75,7 +104,12 @@ public class SupervisoraDeConexao extends Thread {
             }
             try {
                 this.usuario.adeus();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            } finally {
+                try {
+                    this.conexao.close();
+                } catch (IOException ignored) {}
+            }
         }
     }
 }

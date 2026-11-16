@@ -76,7 +76,9 @@ public class Cliente {
 
         BlockingQueue<Leitura> fila = new LinkedBlockingQueue<>();
         try {
-            Configuracao.carregarEnv();
+            if (new File(".env").isFile()) {
+                Configuracao.carregarEnv();
+            }
 
             String broker = Configuracao.obter("MQTT_BROKER_URL", "tcp://localhost:1883");
             String usuario = Configuracao.obter("MQTT_USER", null);

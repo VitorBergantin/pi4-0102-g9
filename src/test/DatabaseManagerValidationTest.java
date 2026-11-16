@@ -9,6 +9,9 @@ import java.time.Instant;
 import org.junit.Before;
 import org.junit.Test;
 
+import src.Comum.Leitura;
+import src.Servidor.DatabaseManager;
+
 /**
  * Testes que NÃO precisam de banco: a validação acontece antes de abrir conexão.
  * Rodam sempre, inclusive no `mvn test` de um PR.
@@ -24,13 +27,7 @@ public class DatabaseManagerValidationTest {
     }
 
     private static Leitura valid() {
-        Leitura d = new Leitura();
-        d.deviceId = "ESP32-SALA-01";
-        d.co2 = 850;
-        d.temperature = 24.5;
-        d.humidity = 45.2;
-        d.measuredAt = "2026-10-13T19:20:00Z";
-        return d;
+        return new Leitura("ESP32-SALA-01", 850, 24.5, 45.2, "2026-10-13T19:20:00Z");
     }
 
     private void assertRejected(String motivo, Leitura data) throws SQLException {
@@ -56,51 +53,30 @@ public class DatabaseManagerValidationTest {
     }
 
     @Test
-    public void saveRead_rejeitaPayloadNulo() throws Exception {
-        assertRejected("payload nulo", null);
+    public void saveRead_rejeitaLeituraNula() throws Exception {
+        assertRejected("leitura nula", null);
     }
 
     @Test
-    public void saveRead_rejeitaDeviceIdInvalido() throws Exception {
-        Leitura d = valid(); d.deviceId = null;  assertRejected("deviceId nulo", d);
-        d = valid(); d.deviceId = "   ";            assertRejected("deviceId em branco", d);
-        d = valid(); d.deviceId = "X".repeat(101);  assertRejected("deviceId > 100 caracteres", d);
-    }
-
-    @Test
-    public void saveRead_rejeitaCo2Invalido() throws Exception {
-        Leitura d = valid(); d.co2 = null; assertRejected("co2 nulo", d);
-        d = valid(); d.co2 = -1;              assertRejected("co2 negativo", d);
-    }
-
-    @Test
-    public void saveRead_rejeitaTemperaturaInvalida() throws Exception {
-        Leitura d = valid(); d.temperature = null;                    assertRejected("temperatura nula", d);
-        d = valid(); d.temperature = Double.NaN;                         assertRejected("temperatura NaN", d);
-        d = valid(); d.temperature = Double.POSITIVE_INFINITY;           assertRejected("temperatura infinita", d);
-        d = valid(); d.temperature = -40.1;                              assertRejected("abaixo de -40", d);
-        d = valid(); d.temperature = 100.1;                              assertRejected("acima de 100", d);
-    }
-
-    @Test
-    public void saveRead_rejeitaUmidadeInvalida() throws Exception {
-        Leitura d = valid(); d.humidity = null;   assertRejected("umidade nula", d);
-        d = valid(); d.humidity = -0.1;              assertRejected("umidade < 0", d);
-        d = valid(); d.humidity = 100.1;             assertRejected("umidade > 100", d);
-        d = valid(); d.humidity = Double.NaN;        assertRejected("umidade NaN", d);
+    public void saveRead_rejeitaTemperaturaForaDaFaixaDoBanco() throws Exception {
+        // A classe Leitura aceita até -273 °C, mas a tabela (CT2) só aceita -40..100.
+        assertRejected("abaixo de -40", new Leitura("X", 850, -40.1, 45.0, "2026-10-13T19:20:00Z"));
     }
 
     @Test
     public void saveRead_rejeitaDataInvalida() throws Exception {
-        Leitura d = valid(); d.measuredAt = null;          assertRejected("data nula", d);
-        d = valid(); d.measuredAt = "  ";                      assertRejected("data em branco", d);
-        d = valid(); d.measuredAt = "ontem à tarde";           assertRejected("data fora do ISO 8601", d);
-        d = valid(); d.measuredAt = "13/10/2026 19:20";        assertRejected("data no formato brasileiro", d);
+        assertRejected("data fora do ISO 8601", new Leitura("X", 850, 24.5, 45.0, "ontem à tarde"));
+        assertRejected("data no formato brasileiro", new Leitura("X", 850, 24.5, 45.0, "13/10/2026 19:20"));
+    }
+
+    @Test
+    public void saveRead_rejeitaDeviceIdMaiorQue100Caracteres() throws Exception {
+        assertRejected("deviceId > 100 caracteres", new Leitura("X".repeat(101), 850, 24.5, 45.0, "2026-10-13T19:20:00Z"));
     }
 
     @Test
     public void saveRead_aceitaTemperaturaNegativaDentroDaFaixaDoSensor() throws Exception {
-        Leitura d = valid(); d.temperature = -5.0;
+        Leitura d = new Leitura("ESP32-SALA-01", 850, -5.0, 45.0, "2026-10-13T19:20:00Z");
         try {
             db.saveRead(d);
             fail("Sem banco, deveria falhar com SQLException (e não com IllegalArgumentException)");
@@ -110,16 +86,42 @@ public class DatabaseManagerValidationTest {
     }
 
     @Test
-    public void listReadingsEGetAverage_validamParametros() throws Exception {
+    public void saveRead_aceitaDataSemOffsetEComOffset() throws Exception {
+        String[] datas = { "2026-10-13T19:20:00", "2026-10-13T19:20:00Z", "2026-10-13T19:20:00-03:00" };
+        for (String data : datas) {
+            try {
+                db.saveRead(new Leitura("ESP32-SALA-01", 850, 24.5, 45.0, data));
+                fail("Sem banco, deveria falhar com SQLException para " + data);
+            } catch (SQLException esperado) {
+                // passou da validação da data
+            }
+        }
+    }
+
+    @Test
+    public void listReadings_validaParametrosAntesDeAbrirConexao() throws Exception {
         Instant a = Instant.parse("2026-10-13T00:00:00Z");
         Instant b = Instant.parse("2026-10-14T00:00:00Z");
         try { db.listReadings("X", b, a, 10); fail("início depois do fim"); } catch (IllegalArgumentException ok) { }
         try { db.listReadings("X", null, b, 10); fail("início nulo"); } catch (IllegalArgumentException ok) { }
+        try { db.listReadings("X", a, null, 10); fail("fim nulo"); } catch (IllegalArgumentException ok) { }
         try { db.listReadings("X", a, b, 0); fail("limit 0"); } catch (IllegalArgumentException ok) { }
-        try { db.listReadings("X", a, b, 1001); fail("limit 1001"); } catch (IllegalArgumentException ok) { }
+        try { db.listReadings("X", a, b, DatabaseManager.MAX_LIMIT + 1); fail("limit acima do máximo"); } catch (IllegalArgumentException ok) { }
         try { db.listReadings(" ", a, b, 10); fail("deviceId em branco"); } catch (IllegalArgumentException ok) { }
-        try { db.getAverage("X", b, a); fail("início depois do fim"); } catch (IllegalArgumentException ok) { }
-        try { db.getAverage(null, a, b); fail("deviceId nulo"); } catch (IllegalArgumentException ok) { }
+        try { db.listReadings(null, a, b, 10); fail("deviceId nulo"); } catch (IllegalArgumentException ok) { }
+        try { db.deviceExists("  "); fail("deviceId em branco"); } catch (IllegalArgumentException ok) { }
+    }
+
+    @Test
+    public void listReadings_comParametrosValidosSoFalhaPorFaltaDeBanco() throws Exception {
+        Instant a = Instant.parse("2026-10-13T00:00:00Z");
+        Instant b = Instant.parse("2026-10-14T00:00:00Z");
+        try {
+            db.listReadings("X", a, b, 10);
+            fail("Sem banco, deveria falhar com SQLException");
+        } catch (SQLException esperado) {
+            // passou da validação e só falhou ao conectar
+        }
     }
 
     @Test(timeout = 20000)
