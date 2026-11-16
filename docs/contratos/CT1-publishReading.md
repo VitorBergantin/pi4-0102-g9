@@ -4,8 +4,8 @@
 |---|---|
 | Fronteira | MQTT |
 | Publicador | ESP32-S3 (Backend 2) |
-| Consumidor | Java (Backend 1) |
-| Atende | E1 |
+| Consumidor | Backend Java (Backend 1) e Frontend (consome a telemetria MQTT diretamente do Broker) |
+| Atende | E1, E2, E3, E5 |
 | Tópico | `co2nect/{deviceId}/telemetry` |
 | Filtro do assinante | `co2nect/+/telemetry` |
 | QoS de publicação | 0 (PubSubClient) |
