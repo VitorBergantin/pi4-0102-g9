@@ -152,8 +152,8 @@ export function SensorLineChart({
                 name={title}
                 stroke={color}
                 strokeWidth={featured ? 2.5 : 2}
-                dot={{ r: featured ? 3.5 : 3, fill: color }}
-                activeDot={{ r: 5 }}
+                dot={data.length <= 1 ? { r: 4, fill: color } : false}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: color, fill: "white" }}
                 isAnimationActive={false}
               />
             </LineChart>
