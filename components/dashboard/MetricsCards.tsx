@@ -4,6 +4,7 @@
 import { useState, useSyncExternalStore } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { isCriticalCo2 } from "@/lib/air-quality"
 import type { SensorReading, DisplayPreferences } from "@/lib/types/sensor"
 
 interface MetricsCardsProps {
@@ -39,7 +40,7 @@ const INDICATORS: {
 
 function getCo2StatusText(co2: number): string {
   if (co2 < 800) return "Qualidade do ar ideal"
-  if (co2 <= 1200) return "Atenção: ventilação recomendada"
+  if (!isCriticalCo2(co2)) return "Atenção: ventilação recomendada"
   return "Alerta: concentração crítica"
 }
 
@@ -150,7 +151,7 @@ export function MetricsCards({ reading }: MetricsCardsProps) {
       unit: "ppm",
       description: getCo2StatusText(reading.co2),
       colorTheme: "green",
-      isAlert: reading.co2 > 1200,
+      isAlert: isCriticalCo2(reading.co2),
     },
     {
       id: "temperature",
